@@ -19,6 +19,16 @@ const userSchema = new mongoose.Schema({
   },
   role: { type: String, enum: ['citizen', 'councillor', 'officer', 'admin'], default: 'citizen' },
   approved: { type: Boolean, default: false },
+  
+  // Councillor-specific fields
+  appointmentDate: { type: Date, required: false }, // Date appointed as ward member
+  endDate: { type: Date, required: false }, // End date of term
+  partyAffiliation: { type: String, required: false }, // Political party affiliation
+  educationalQualification: { type: String, required: false }, // Educational background
+  previousExperience: { type: String, required: false }, // Previous experience
+  emergencyContact: { type: String, required: false }, // Emergency contact number
+  emergencyContactRelation: { type: String, required: false }, // Relation to emergency contact
+  
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

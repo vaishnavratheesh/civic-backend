@@ -7,7 +7,8 @@ const PasswordResetToken = require('../models/PasswordResetToken');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const generateOTP = require('../utils/generateOTP');
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const config = require('../config/config');
+const googleClient = new OAuth2Client(config.GOOGLE_CLIENT_ID);
 
 // Registration - Send OTP
 async function register(req, res) {
@@ -84,7 +85,7 @@ async function login(req, res) {
     if (!user) return res.status(400).json({ error: 'Invalid credentials' });
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, config.JWT_SECRET, { expiresIn: '7d' });
     res.json({ 
       token, 
       userId: user._id, 
@@ -109,8 +110,8 @@ async function forgotPassword(req, res) {
     const token = require('crypto').randomBytes(32).toString('hex');
     const resetToken = new PasswordResetToken({ userId: user._id, token });
     await resetToken.save();
-    if (!process.env.FRONTEND_URL) return res.status(500).json({ error: 'Server misconfiguration: FRONTEND_URL not set.' });
-    const resetLink = `${process.env.FRONTEND_URL}/#/reset-password?token=${token}`;
+    if (!config.FRONTEND_URL) return res.status(500).json({ error: 'Server misconfiguration: FRONTEND_URL not set.' });
+    const resetLink = `${config.FRONTEND_URL}/#/reset-password?token=${token}`;
     await sendPasswordResetEmail(email, resetLink);
     return res.json({ message: 'If this email is registered, a reset link has been sent.' });
   } catch (err) {
@@ -139,13 +140,13 @@ async function resetPassword(req, res) {
 async function googleLogin(req, res) {
   const { credential } = req.body;
   try {
-    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: config.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     const email = payload.email;
     const name = payload.name;
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: 'No account found with this email. Please register first.' });
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, config.JWT_SECRET, { expiresIn: '7d' });
     res.json({ 
       token, 
       userId: user._id, 
@@ -164,7 +165,7 @@ async function googleLogin(req, res) {
 async function googleRegister(req, res) {
   const { credential, ward, panchayath } = req.body;
   try {
-    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: config.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     const email = payload.email;
     const name = payload.name;
@@ -182,7 +183,7 @@ async function googleRegister(req, res) {
 async function googleRegisterComplete(req, res) {
   const { credential, ward, panchayath } = req.body;
   try {
-    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: config.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     const email = payload.email;
     const name = payload.name;
@@ -192,7 +193,7 @@ async function googleRegisterComplete(req, res) {
     if (existingUser) return res.status(400).json({ error: 'User already exists with this email. Please try logging in instead.' });
     const newUser = new User({ name, email, ward, panchayath, password: null, googleId, profilePicture: picture, registrationSource: 'google' });
     await newUser.save();
-    const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: newUser._id }, config.JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, userId: newUser._id, name: newUser.name, email: newUser.email, ward: newUser.ward, panchayath: newUser.panchayath, profilePicture: newUser.profilePicture });
   } catch (err) {
     res.status(500).json({ error: 'Google registration failed. Please try again.' });

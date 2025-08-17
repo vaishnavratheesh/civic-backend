@@ -1,0 +1,274 @@
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const config = require('../config/config');
+
+// Councillor login with ward-specific credentials
+async function councillorLogin(req, res) {
+  const { ward, password } = req.body;
+
+  try {
+    // Validate input
+    if (!ward || !password) {
+      return res.status(400).json({ error: 'Ward number and password are required' });
+    }
+
+    if (ward < 1 || ward > 23) {
+      return res.status(400).json({ error: 'Invalid ward number. Must be between 1 and 23' });
+    }
+
+    // Expected password format: ward@wardnumber
+    const expectedPassword = `ward@${ward}`;
+
+    // Check if password matches the expected format
+    if (password !== expectedPassword) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+
+    // Find or create councillor user
+    let councillor = await User.findOne({ 
+      role: 'councillor', 
+      ward: ward 
+    });
+
+    if (!councillor) {
+      // Create new councillor account
+      councillor = new User({
+        email: `councillor.ward${ward}@erumeli.gov.in`,
+        password: await bcrypt.hash(expectedPassword, 10),
+        ward: ward,
+        role: 'councillor',
+        approved: true,
+        panchayath: 'Erumeli Panchayath',
+        name: `Councillor Ward ${ward}`,
+        isVerified: true
+      });
+      await councillor.save();
+    }
+
+    // Check if councillor is approved
+    if (!councillor.approved) {
+      return res.status(403).json({ error: 'Your councillor account is pending approval' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: councillor._id, role: 'councillor' },
+      config.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Check if profile is complete
+    const profileComplete = councillor.name && 
+                           councillor.contactNumber && 
+                           councillor.address && 
+                           councillor.appointmentDate && 
+                           councillor.endDate;
+
+    res.json({
+      token,
+      userId: councillor._id,
+      name: councillor.name,
+      email: councillor.email,
+      ward: councillor.ward,
+      panchayath: councillor.panchayath,
+      profilePicture: councillor.profilePicture,
+      profileComplete,
+      role: 'councillor'
+    });
+
+  } catch (err) {
+    console.error('Councillor login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+}
+
+// Complete councillor profile
+async function completeProfile(req, res) {
+  const { id } = req.user;
+  const {
+    name,
+    ward,
+    appointmentDate,
+    endDate,
+    contactNumber,
+    email,
+    address,
+    partyAffiliation,
+    educationalQualification,
+    previousExperience,
+    emergencyContact,
+    emergencyContactRelation,
+    currentPassword,
+    newPassword
+  } = req.body;
+
+  try {
+    const councillor = await User.findById(id);
+    if (!councillor) {
+      return res.status(404).json({ error: 'Councillor not found' });
+    }
+
+    if (councillor.role !== 'councillor') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Update basic fields
+    if (name) councillor.name = name;
+    if (ward) councillor.ward = parseInt(ward);
+    if (appointmentDate) councillor.appointmentDate = appointmentDate;
+    if (endDate) councillor.endDate = endDate;
+    if (contactNumber) councillor.contactNumber = contactNumber;
+    if (email) councillor.email = email;
+    if (address) councillor.address = address;
+    if (partyAffiliation) councillor.partyAffiliation = partyAffiliation;
+    if (educationalQualification) councillor.educationalQualification = educationalQualification;
+    if (previousExperience) councillor.previousExperience = previousExperience;
+    if (emergencyContact) councillor.emergencyContact = emergencyContact;
+    if (emergencyContactRelation) councillor.emergencyContactRelation = emergencyContactRelation;
+
+    // Handle password change if provided
+    if (currentPassword && newPassword) {
+      const isMatch = await bcrypt.compare(currentPassword, councillor.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Current password is incorrect' });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+      }
+
+      councillor.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    councillor.updatedAt = new Date();
+    await councillor.save();
+
+    // Return updated councillor data
+    const councillorResponse = councillor.toObject();
+    delete councillorResponse.password;
+
+    res.json({
+      message: 'Profile completed successfully',
+      councillor: councillorResponse
+    });
+
+  } catch (err) {
+    console.error('Complete profile error:', err);
+    res.status(500).json({ error: 'Failed to complete profile' });
+  }
+}
+
+// Change councillor password
+async function changePassword(req, res) {
+  const { id } = req.user;
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    const councillor = await User.findById(id);
+    if (!councillor) {
+      return res.status(404).json({ error: 'Councillor not found' });
+    }
+
+    if (councillor.role !== 'councillor') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, councillor.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    // Validate new password
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    // Hash and save new password
+    councillor.password = await bcrypt.hash(newPassword, 10);
+    councillor.updatedAt = new Date();
+    await councillor.save();
+
+    res.json({ message: 'Password changed successfully' });
+
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+}
+
+// Get councillor profile
+async function getProfile(req, res) {
+  const { id } = req.user;
+
+  try {
+    const councillor = await User.findById(id).select('-password');
+    if (!councillor) {
+      return res.status(404).json({ error: 'Councillor not found' });
+    }
+
+    if (councillor.role !== 'councillor') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json({ councillor });
+
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(500).json({ error: 'Failed to get profile' });
+  }
+}
+
+// Update councillor profile
+async function updateProfile(req, res) {
+  const { id } = req.user;
+  const updateData = req.body;
+
+  try {
+    const councillor = await User.findById(id);
+    if (!councillor) {
+      return res.status(404).json({ error: 'Councillor not found' });
+    }
+
+    if (councillor.role !== 'councillor') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Update allowed fields
+    const allowedFields = [
+      'name', 'contactNumber', 'address', 'partyAffiliation',
+      'educationalQualification', 'previousExperience', 'emergencyContact',
+      'emergencyContactRelation', 'appointmentDate', 'endDate'
+    ];
+
+    allowedFields.forEach(field => {
+      if (updateData[field] !== undefined) {
+        councillor[field] = updateData[field];
+      }
+    });
+
+    councillor.updatedAt = new Date();
+    await councillor.save();
+
+    const councillorResponse = councillor.toObject();
+    delete councillorResponse.password;
+
+    res.json({
+      message: 'Profile updated successfully',
+      councillor: councillorResponse
+    });
+
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+}
+
+module.exports = {
+  councillorLogin,
+  completeProfile,
+  changePassword,
+  getProfile,
+  updateProfile
+}; 
