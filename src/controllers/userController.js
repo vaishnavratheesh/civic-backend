@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const CouncillorProfile = require('../models/CouncillorProfile');
 const bcrypt = require('bcryptjs');
 const { uploadImage, deleteImage } = require('../utils/cloudinary');
 const fs = require('fs');
@@ -7,8 +8,11 @@ const fs = require('fs');
 async function checkEmail(req, res) {
   const { email } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
-    res.status(200).json({ exists: !!existingUser });
+    const [existingUser, existingCouncillor] = await Promise.all([
+      User.findOne({ email }),
+      CouncillorProfile.findOne({ email })
+    ]);
+    res.status(200).json({ exists: !!(existingUser || existingCouncillor) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to check email' });
   }
@@ -198,3 +202,45 @@ module.exports = {
   updateProfilePicture, 
   changePassword 
 };
+
+// Get ward statistics (public endpoint for simple stats)
+async function getWardStats(req, res) {
+  try {
+    const wardParam = req.params.ward;
+    const ward = parseInt(wardParam);
+    if (Number.isNaN(ward)) {
+      return res.status(400).json({ success: false, message: 'Invalid ward' });
+    }
+
+    const [userCount, citizens, officers, admins, userVerified, userApproved, councillorCount, councillorVerified, councillorApproved] = await Promise.all([
+      User.countDocuments({ ward }),
+      User.countDocuments({ ward, role: 'citizen' }),
+      User.countDocuments({ ward, role: 'officer' }),
+      User.countDocuments({ ward, role: 'admin' }),
+      User.countDocuments({ ward, isVerified: true }),
+      User.countDocuments({ ward, approved: true }),
+      CouncillorProfile.countDocuments({ ward }),
+      CouncillorProfile.countDocuments({ ward, isVerified: true }),
+      CouncillorProfile.countDocuments({ ward, approved: true })
+    ]);
+
+    return res.json({
+      success: true,
+      ward,
+      stats: {
+        totalUsers: userCount + councillorCount,
+        citizens,
+        councillors: councillorCount,
+        officers,
+        admins,
+        verified: userVerified + councillorVerified,
+        approved: userApproved + councillorApproved
+      }
+    });
+  } catch (error) {
+    console.error('Error getting ward stats:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching ward statistics' });
+  }
+}
+
+module.exports.getWardStats = getWardStats;

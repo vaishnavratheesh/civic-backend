@@ -1,14 +1,14 @@
 const User = require('../models/User');
+const CouncillorProfile = require('../models/CouncillorProfile');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
-// Councillor login with ward-specific credentials
+// Councillor login (deprecated in favor of unified login) - keep for compatibility if used elsewhere
 async function councillorLogin(req, res) {
   const { ward, password } = req.body;
 
   try {
-    // Validate input
     if (!ward || !password) {
       return res.status(400).json({ error: 'Ward number and password are required' });
     }
@@ -17,53 +17,29 @@ async function councillorLogin(req, res) {
       return res.status(400).json({ error: 'Invalid ward number. Must be between 1 and 23' });
     }
 
-    // Expected password format: ward@wardnumber
-    const expectedPassword = `ward@${ward}`;
-
-    // Check if password matches the expected format
-    if (password !== expectedPassword) {
-      return res.status(400).json({ error: 'Invalid credentials' });
-    }
-
-    // Find or create councillor user
-    let councillor = await User.findOne({ 
-      role: 'councillor', 
-      ward: ward 
-    });
-
+    // Find councillor profile by ward
+    const councillor = await CouncillorProfile.findOne({ ward });
     if (!councillor) {
-      // Create new councillor account
-      councillor = new User({
-        email: `councillor.ward${ward}@erumeli.gov.in`,
-        password: await bcrypt.hash(expectedPassword, 10),
-        ward: ward,
-        role: 'councillor',
-        approved: true,
-        panchayath: 'Erumeli Panchayath',
-        name: `Councillor Ward ${ward}`,
-        isVerified: true
-      });
-      await councillor.save();
+      return res.status(404).json({ error: 'Councillor account not found for this ward' });
     }
+    const isMatch = await bcrypt.compare(password, councillor.password || '');
+    if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
 
-    // Check if councillor is approved
     if (!councillor.approved) {
       return res.status(403).json({ error: 'Your councillor account is pending approval' });
     }
 
-    // Generate JWT token
     const token = jwt.sign(
       { userId: councillor._id, role: 'councillor' },
       config.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    // Check if profile is complete
-    const profileComplete = councillor.name && 
+    const profileComplete = !!(councillor.name && 
                            councillor.contactNumber && 
                            councillor.address && 
                            councillor.appointmentDate && 
-                           councillor.endDate;
+                           councillor.endDate);
 
     res.json({
       token,
@@ -104,14 +80,12 @@ async function completeProfile(req, res) {
   } = req.body;
 
   try {
-    const councillor = await User.findById(id);
+    const councillor = await CouncillorProfile.findById(id);
     if (!councillor) {
       return res.status(404).json({ error: 'Councillor not found' });
     }
 
-    if (councillor.role !== 'councillor') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // CouncillorProfile implies role 'councillor'
 
     // Update basic fields
     if (name) councillor.name = name;
@@ -129,7 +103,7 @@ async function completeProfile(req, res) {
 
     // Handle password change if provided
     if (currentPassword && newPassword) {
-      const isMatch = await bcrypt.compare(currentPassword, councillor.password);
+      const isMatch = await bcrypt.compare(currentPassword, councillor.password || '');
       if (!isMatch) {
         return res.status(400).json({ error: 'Current password is incorrect' });
       }
@@ -165,14 +139,12 @@ async function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body;
 
   try {
-    const councillor = await User.findById(id);
+    const councillor = await CouncillorProfile.findById(id);
     if (!councillor) {
       return res.status(404).json({ error: 'Councillor not found' });
     }
 
-    if (councillor.role !== 'councillor') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // CouncillorProfile implies role 'councillor'
 
     // Verify current password
     const isMatch = await bcrypt.compare(currentPassword, councillor.password);
@@ -203,14 +175,12 @@ async function getProfile(req, res) {
   const { id } = req.user;
 
   try {
-    const councillor = await User.findById(id).select('-password');
+    const councillor = await CouncillorProfile.findById(id).select('-password');
     if (!councillor) {
       return res.status(404).json({ error: 'Councillor not found' });
     }
 
-    if (councillor.role !== 'councillor') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // CouncillorProfile implies role 'councillor'
 
     res.json({ councillor });
 
@@ -226,14 +196,12 @@ async function updateProfile(req, res) {
   const updateData = req.body;
 
   try {
-    const councillor = await User.findById(id);
+    const councillor = await CouncillorProfile.findById(id);
     if (!councillor) {
       return res.status(404).json({ error: 'Councillor not found' });
     }
 
-    if (councillor.role !== 'councillor') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // CouncillorProfile implies role 'councillor'
 
     // Update allowed fields
     const allowedFields = [

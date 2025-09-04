@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
+const CouncillorProfile = require('../models/CouncillorProfile');
 const OTP = require('../models/OTP');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
@@ -77,23 +78,45 @@ async function resendOTP(req, res) {
   }
 }
 
-// Login
+// Login (unified for citizens/admin/officer from users, and councillors from councillor_profiles)
 async function login(req, res) {
   const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
-    const isMatch = await bcrypt.compare(password, user.password);
+    // First try normal users (citizens/admin/officer)
+    let user = await User.findOne({ email });
+    if (user) {
+      const isMatch = await bcrypt.compare(password, user.password || '');
+      if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+      const token = jwt.sign({ userId: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '7d' });
+      return res.json({ 
+        token, 
+        userId: user._id, 
+        name: user.name, 
+        email: user.email, 
+        ward: user.ward, 
+        panchayath: user.panchayath,
+        profilePicture: user.profilePicture,
+        role: user.role
+      });
+    }
+
+    // Then try councillor profiles
+    const councillor = await CouncillorProfile.findOne({ email });
+    if (!councillor) return res.status(400).json({ error: 'Invalid credentials' });
+    const isMatch = await bcrypt.compare(password, councillor.password || '');
     if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ userId: user._id }, config.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ 
-      token, 
-      userId: user._id, 
-      name: user.name, 
-      email: user.email, 
-      ward: user.ward, 
-      panchayath: user.panchayath,
-      profilePicture: user.profilePicture
+
+    // Councillor token carries role=councillor
+    const token = jwt.sign({ userId: councillor._id, role: 'councillor' }, config.JWT_SECRET, { expiresIn: '7d' });
+    return res.json({
+      token,
+      userId: councillor._id,
+      name: councillor.name,
+      email: councillor.email,
+      ward: councillor.ward,
+      panchayath: councillor.panchayath,
+      profilePicture: councillor.profilePicture,
+      role: 'councillor'
     });
   } catch (err) {
     res.status(500).json({ error: 'Login failed' });
@@ -146,7 +169,7 @@ async function googleLogin(req, res) {
     const name = payload.name;
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: 'No account found with this email. Please register first.' });
-    const token = jwt.sign({ userId: user._id }, config.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '7d' });
     res.json({ 
       token, 
       userId: user._id, 
@@ -154,7 +177,8 @@ async function googleLogin(req, res) {
       email: user.email, 
       ward: user.ward, 
       panchayath: user.panchayath,
-      profilePicture: user.profilePicture
+      profilePicture: user.profilePicture,
+      role: user.role
     });
   } catch (err) {
     res.status(500).json({ error: 'Google login failed' });
@@ -193,7 +217,7 @@ async function googleRegisterComplete(req, res) {
     if (existingUser) return res.status(400).json({ error: 'User already exists with this email. Please try logging in instead.' });
     const newUser = new User({ name, email, ward, panchayath, password: null, googleId, profilePicture: picture, registrationSource: 'google' });
     await newUser.save();
-    const token = jwt.sign({ userId: newUser._id }, config.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: newUser._id, role: newUser.role }, config.JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, userId: newUser._id, name: newUser.name, email: newUser.email, ward: newUser.ward, panchayath: newUser.panchayath, profilePicture: newUser.profilePicture });
   } catch (err) {
     res.status(500).json({ error: 'Google registration failed. Please try again.' });
@@ -211,6 +235,51 @@ async function checkGoogleUser(req, res) {
   }
 }
 
+// Create Admin User (for development/testing)
+async function createAdmin(req, res) {
+  try {
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: 'admin123@gmail.com' });
+    if (existingAdmin) {
+      return res.json({ 
+        message: 'Admin user already exists!',
+        credentials: {
+          email: 'admin123@gmail.com',
+          password: 'Admin@123'
+        }
+      });
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash('Admin@123', 10);
+
+    // Create admin user
+    const adminUser = new User({
+      name: 'System Administrator',
+      email: 'admin123@gmail.com',
+      password: hashedPassword,
+      ward: 1, // Default ward for admin
+      panchayath: 'Erumeli Panchayath',
+      role: 'admin',
+      approved: true,
+      isVerified: true,
+      registrationSource: 'manual'
+    });
+
+    await adminUser.save();
+    res.json({ 
+      message: 'Admin user created successfully!',
+      credentials: {
+        email: 'admin123@gmail.com',
+        password: 'Admin@123'
+      }
+    });
+  } catch (error) {
+    console.error('Error creating admin user:', error);
+    res.status(500).json({ error: 'Failed to create admin user' });
+  }
+}
+
 module.exports = {
   register,
   verifyOTP,
@@ -221,5 +290,6 @@ module.exports = {
   googleLogin,
   googleRegister,
   googleRegisterComplete,
-  checkGoogleUser
+  checkGoogleUser,
+  createAdmin // Add this to exports
 };

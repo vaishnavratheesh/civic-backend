@@ -6,6 +6,8 @@ const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const councillorRoutes = require('./routes/councillorRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const welfareRoutes = require('./routes/welfareRoutes');
 
 const app = express();
 
@@ -29,6 +31,8 @@ mongoose.connect(config.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: 
 app.use('/api', authRoutes);
 app.use('/api', userRoutes);
 app.use('/api', councillorRoutes);
+app.use('/api', adminRoutes);
+app.use('/api/welfare', welfareRoutes);
 
 // Test endpoint
 app.get('/api/test', (req, res) => {

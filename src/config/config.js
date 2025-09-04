@@ -7,7 +7,7 @@ const config = {
   NODE_ENV: process.env.NODE_ENV || 'development',
 
   // MongoDB Configuration
-  MONGO_URI: process.env.MONGO_URI || 'mongodb://localhost:27017/civic_plus',
+  MONGO_URI: process.env.MONGO_URI || 'mongodb+srv://vaishnavratheesh2026:mayaratheesh@cluster0.p06gw.mongodb.net/civic?retryWrites=true&w=majority',
 
   // JWT Configuration
   JWT_SECRET: process.env.JWT_SECRET || 'your_jwt_secret_here',

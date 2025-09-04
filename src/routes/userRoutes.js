@@ -6,6 +6,9 @@ const upload = require('../middleware/upload');
 // Email existence check
 router.post('/check-email', userController.checkEmail);
 
+// Ward statistics (public/simple)
+router.get('/wards/:ward/stats', userController.getWardStats);
+
 // Get user profile
 router.get('/users/:id', userController.getProfile);
 
