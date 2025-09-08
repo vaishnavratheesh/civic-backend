@@ -18,5 +18,6 @@ router.get('/applications', auth, welfareApplicationController.getApplications);
 router.get('/applications/user', auth, welfareApplicationController.getUserApplications);
 router.put('/applications/:id/review', auth, welfareApplicationController.reviewApplication);
 router.get('/applications/stats', auth, welfareApplicationController.getApplicationStats);
+// Removed detailed application endpoint; details are in /applications and /applications/user
 
 module.exports = router; 

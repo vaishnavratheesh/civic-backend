@@ -216,8 +216,31 @@ async function updateProfile(req, res) {
       }
     });
 
+    // Handle password change if provided
+    if (updateData.currentPassword && updateData.newPassword) {
+      console.log('Password change requested for councillor:', id);
+      console.log('Current password provided:', updateData.currentPassword ? 'Yes' : 'No');
+      console.log('New password provided:', updateData.newPassword ? 'Yes' : 'No');
+      
+      const isMatch = await bcrypt.compare(updateData.currentPassword, councillor.password || '');
+      if (!isMatch) {
+        console.log('Current password verification failed');
+        return res.status(400).json({ error: 'Current password is incorrect' });
+      }
+
+      if (updateData.newPassword.length < 8) {
+        console.log('New password too short:', updateData.newPassword.length);
+        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+      }
+
+      console.log('Password change approved, hashing new password...');
+      councillor.password = await bcrypt.hash(updateData.newPassword, 10);
+      console.log('Password hashed and updated successfully');
+    }
+
     councillor.updatedAt = new Date();
     await councillor.save();
+    console.log('Profile saved to database successfully');
 
     const councillorResponse = councillor.toObject();
     delete councillorResponse.password;

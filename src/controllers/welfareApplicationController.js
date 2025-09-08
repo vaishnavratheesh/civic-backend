@@ -1,16 +1,14 @@
 const WelfareApplication = require('../models/WelfareApplication');
 const WelfareScheme = require('../models/WelfareScheme');
 const User = require('../models/User');
+// Removed WelfareApplicationDetail: storing full data only in WelfareApplication
 
 // Apply for welfare scheme
 async function applyForScheme(req, res) {
   try {
     const { schemeId } = req.params;
     const { id: userId } = req.user;
-    const {
-      address, phoneNumber, rationCardNumber, aadharNumber,
-      familyIncome, dependents, isHandicapped, isSingleWoman, reason
-    } = req.body;
+    const { personalDetails, assessment, reason } = req.body;
 
     // Check if scheme exists and is active
     const scheme = await WelfareScheme.findById(schemeId);
@@ -73,14 +71,55 @@ async function applyForScheme(req, res) {
       userEmail: user.email,
       userWard: user.ward,
       personalDetails: {
-        address,
-        phoneNumber,
-        rationCardNumber,
-        aadharNumber,
-        familyIncome: parseInt(familyIncome),
-        dependents: parseInt(dependents),
-        isHandicapped,
-        isSingleWoman
+        address: personalDetails.address,
+        phoneNumber: personalDetails.phoneNumber,
+        rationCardNumber: personalDetails.rationCardNumber,
+        aadharNumber: personalDetails.aadharNumber,
+        familyIncome: parseInt(personalDetails.familyIncome),
+        dependents: parseInt(personalDetails.dependents),
+        isHandicapped: personalDetails.isHandicapped,
+        isSingleWoman: personalDetails.isSingleWoman
+      },
+      assessment: {
+        familyMembers: parseInt(assessment.familyMembers),
+        childrenCount: parseInt(assessment.childrenCount),
+        elderlyCount: parseInt(assessment.elderlyCount),
+        disabledMembers: parseInt(assessment.disabledMembers),
+        monthlyIncome: parseInt(assessment.monthlyIncome),
+        incomeSource: assessment.incomeSource,
+        hasOtherIncome: assessment.hasOtherIncome,
+        otherIncomeAmount: parseInt(assessment.otherIncomeAmount) || 0,
+        houseOwnership: assessment.houseOwnership,
+        houseType: assessment.houseType,
+        hasElectricity: assessment.hasElectricity,
+        hasWaterConnection: assessment.hasWaterConnection,
+        hasToilet: assessment.hasToilet,
+        educationLevel: assessment.educationLevel,
+        childrenEducation: assessment.childrenEducation,
+        hasHealthInsurance: assessment.hasHealthInsurance,
+        chronicIllness: assessment.chronicIllness,
+        illnessDetails: assessment.illnessDetails,
+        hasDisability: assessment.hasDisability,
+        disabilityType: assessment.disabilityType,
+        employmentStatus: assessment.employmentStatus,
+        jobStability: assessment.jobStability,
+        hasBankAccount: assessment.hasBankAccount,
+        hasVehicle: assessment.hasVehicle,
+        vehicleType: assessment.vehicleType,
+        hasLand: assessment.hasLand,
+        landArea: parseInt(assessment.landArea) || 0,
+        caste: assessment.caste,
+        religion: assessment.religion,
+        isWidow: assessment.isWidow,
+        isOrphan: assessment.isOrphan,
+        isSeniorCitizen: assessment.isSeniorCitizen,
+        hasEmergencyFund: assessment.hasEmergencyFund,
+        emergencyContact: assessment.emergencyContact,
+        emergencyRelation: assessment.emergencyRelation,
+        previousApplications: parseInt(assessment.previousApplications) || 0,
+        previousSchemes: assessment.previousSchemes || [],
+        additionalNeeds: assessment.additionalNeeds,
+        specialCircumstances: assessment.specialCircumstances
       },
       reason
     });
@@ -106,6 +145,8 @@ async function applyForScheme(req, res) {
   }
 }
 
+// Removed getApplicationDetail: all details are in WelfareApplication now
+
 // Get applications (admin sees all, councillor sees their ward applications)
 async function getApplications(req, res) {
   try {
@@ -127,15 +168,19 @@ async function getApplications(req, res) {
         .populate('userId', 'name email')
         .sort({ appliedAt: -1 });
     } else if (role === 'councillor') {
-      // Councillor sees applications from their ward
-      const councillor = await CouncillorProfile.findById(userId);
-      if (!councillor) {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'Councillor not found' 
-        });
+      // Councillor sees applications from their ward (explicit query param or derived from user profile)
+      if (ward) {
+        query.userWard = parseInt(ward);
+      } else {
+        const councillorUser = await User.findById(userId);
+        if (!councillorUser) {
+          return res.status(404).json({ 
+            success: false, 
+            message: 'User not found' 
+          });
+        }
+        query.userWard = councillorUser.ward;
       }
-      query.userWard = councillor.ward;
       
       applications = await WelfareApplication.find(query)
         .populate('schemeId', 'title scope ward')
@@ -202,8 +247,8 @@ async function reviewApplication(req, res) {
 
     // Check permissions
     if (role === 'councillor') {
-      const councillor = await CouncillorProfile.findById(reviewerId);
-      if (!councillor || councillor.ward !== application.userWard) {
+      const reviewer = await User.findById(reviewerId);
+      if (!reviewer || reviewer.ward !== application.userWard) {
         return res.status(403).json({ 
           success: false, 
           message: 'You can only review applications from your ward' 
@@ -284,17 +329,17 @@ async function getApplicationStats(req, res) {
       };
 
     } else if (role === 'councillor') {
-      // Councillor sees their ward stats
-      const councillor = await CouncillorProfile.findById(userId);
-      if (!councillor) {
+      // Councillor sees their ward stats (from User profile)
+      const councillorUser = await User.findById(userId);
+      if (!councillorUser) {
         return res.status(404).json({ 
           success: false, 
-          message: 'Councillor not found' 
+          message: 'User not found' 
         });
       }
 
       stats = await WelfareApplication.aggregate([
-        { $match: { userWard: councillor.ward } },
+        { $match: { userWard: councillorUser.ward } },
         {
           $group: {
             _id: null,
@@ -340,4 +385,4 @@ module.exports = {
   getUserApplications,
   reviewApplication,
   getApplicationStats
-}; 
+};

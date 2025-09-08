@@ -22,6 +22,104 @@ const welfareApplicationSchema = new mongoose.Schema({
     isHandicapped: { type: Boolean, default: false },
     isSingleWoman: { type: Boolean, default: false }
   },
+
+  // Detailed Assessment Questions for ML Analysis
+  assessment: {
+    // Family Information
+    familyMembers: { type: Number, required: true },
+    childrenCount: { type: Number, required: true },
+    elderlyCount: { type: Number, required: true },
+    disabledMembers: { type: Number, required: true },
+    
+    // Income Details
+    monthlyIncome: { type: Number, required: true },
+    incomeSource: { 
+      type: String, 
+      enum: ['salary', 'business', 'agriculture', 'daily_wage', 'pension', 'other'],
+      required: true 
+    },
+    hasOtherIncome: { type: Boolean, default: false },
+    otherIncomeAmount: { type: Number, default: 0 },
+    
+    // Housing Information
+    houseOwnership: { 
+      type: String, 
+      enum: ['owned', 'rented', 'government', 'other'],
+      required: true 
+    },
+    houseType: { 
+      type: String, 
+      enum: ['concrete', 'semi_concrete', 'thatched', 'temporary'],
+      required: true 
+    },
+    hasElectricity: { type: Boolean, default: false },
+    hasWaterConnection: { type: Boolean, default: false },
+    hasToilet: { type: Boolean, default: false },
+    
+    // Education
+    educationLevel: { 
+      type: String, 
+      enum: ['illiterate', 'primary', 'secondary', 'higher_secondary', 'graduate', 'post_graduate'],
+      required: true 
+    },
+    childrenEducation: { 
+      type: String, 
+      enum: ['not_applicable', 'government', 'private', 'not_attending'],
+      required: true 
+    },
+    
+    // Health
+    hasHealthInsurance: { type: Boolean, default: false },
+    chronicIllness: { type: Boolean, default: false },
+    illnessDetails: { type: String, required: false },
+    hasDisability: { type: Boolean, default: false },
+    disabilityType: { type: String, required: false },
+    
+    // Employment
+    employmentStatus: { 
+      type: String, 
+      enum: ['employed', 'unemployed', 'self_employed', 'student', 'retired', 'homemaker'],
+      required: true 
+    },
+    jobStability: { 
+      type: String, 
+      enum: ['permanent', 'temporary', 'contract', 'daily_wage', 'not_applicable'],
+      required: true 
+    },
+    
+    // Assets
+    hasBankAccount: { type: Boolean, default: false },
+    hasVehicle: { type: Boolean, default: false },
+    vehicleType: { type: String, required: false },
+    hasLand: { type: Boolean, default: false },
+    landArea: { type: Number, default: 0 },
+    
+    // Social Status
+    caste: { 
+      type: String, 
+      enum: ['general', 'obc', 'sc', 'st', 'other'],
+      required: true 
+    },
+    religion: { 
+      type: String, 
+      enum: ['hindu', 'muslim', 'christian', 'sikh', 'buddhist', 'jain', 'other'],
+      required: true 
+    },
+    isWidow: { type: Boolean, default: false },
+    isOrphan: { type: Boolean, default: false },
+    isSeniorCitizen: { type: Boolean, default: false },
+    
+    // Emergency Information
+    hasEmergencyFund: { type: Boolean, default: false },
+    emergencyContact: { type: String, required: true },
+    emergencyRelation: { type: String, required: true },
+    
+    // Additional Information
+    previousApplications: { type: Number, default: 0 },
+    previousSchemes: [String],
+    additionalNeeds: { type: String, required: false },
+    specialCircumstances: { type: String, required: false }
+  },
   
   // Application content
   reason: { type: String, required: true },
