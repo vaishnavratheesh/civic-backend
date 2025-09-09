@@ -244,3 +244,28 @@ async function getWardStats(req, res) {
 }
 
 module.exports.getWardStats = getWardStats;
+
+// Get councillor basic info by ward (public)
+async function getCouncillorByWard(req, res) {
+  try {
+    const wardParam = req.params.ward;
+    const ward = parseInt(wardParam);
+    if (Number.isNaN(ward)) {
+      return res.status(400).json({ success: false, message: 'Invalid ward' });
+    }
+
+    const councillor = await CouncillorProfile.findOne({ ward })
+      .select('name email contactNumber address panchayath ward profilePicture');
+
+    if (!councillor) {
+      return res.status(404).json({ success: false, message: 'Councillor not found' });
+    }
+
+    return res.json({ success: true, councillor });
+  } catch (error) {
+    console.error('Error getting councillor by ward:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching councillor' });
+  }
+}
+
+module.exports.getCouncillorByWard = getCouncillorByWard;

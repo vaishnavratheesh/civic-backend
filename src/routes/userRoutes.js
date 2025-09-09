@@ -9,6 +9,9 @@ router.post('/check-email', userController.checkEmail);
 // Ward statistics (public/simple)
 router.get('/wards/:ward/stats', userController.getWardStats);
 
+// Councillor info by ward (public)
+router.get('/wards/:ward/councillor', userController.getCouncillorByWard);
+
 // Get user profile
 router.get('/users/:id', userController.getProfile);
 

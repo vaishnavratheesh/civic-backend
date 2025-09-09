@@ -3,11 +3,12 @@ const nodemailer = require('nodemailer');
 let transporter;
 function getTransporter() {
   if (transporter) return transporter;
+  const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || 'temp_password';
   transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: 'vaishnavratheesh27@gmail.com',
-      pass: process.env.EMAIL_PASSWORD || 'temp_password'
+      pass: emailPass
     }
   });
   return transporter;
@@ -15,7 +16,8 @@ function getTransporter() {
 
 async function sendOTPEmail(email, otp, name) {
   const transporter = getTransporter();
-  if (!process.env.EMAIL_PASSWORD || process.env.EMAIL_PASSWORD === 'temp_password') {
+  const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
+  if (!emailPass || emailPass === 'temp_password') {
     console.log('Simulating OTP email...');
     console.log(`To: ${email}`);
     console.log(`OTP: ${otp}`);
@@ -49,7 +51,8 @@ async function sendOTPEmail(email, otp, name) {
 
 async function sendPasswordResetEmail(email, resetLink) {
   const transporter = getTransporter();
-  if (!process.env.EMAIL_PASSWORD || process.env.EMAIL_PASSWORD === 'temp_password') {
+  const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
+  if (!emailPass || emailPass === 'temp_password') {
     console.log('Simulating password reset email...');
     console.log(`To: ${email}`);
     console.log(`Reset Link: ${resetLink}`);

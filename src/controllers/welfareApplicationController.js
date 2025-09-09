@@ -1,6 +1,7 @@
 const WelfareApplication = require('../models/WelfareApplication');
 const WelfareScheme = require('../models/WelfareScheme');
 const User = require('../models/User');
+const CouncillorProfile = require('../models/CouncillorProfile');
 // Removed WelfareApplicationDetail: storing full data only in WelfareApplication
 
 // Apply for welfare scheme
@@ -329,17 +330,17 @@ async function getApplicationStats(req, res) {
       };
 
     } else if (role === 'councillor') {
-      // Councillor sees their ward stats (from User profile)
-      const councillorUser = await User.findById(userId);
-      if (!councillorUser) {
+      // Councillor sees stats for their ward (councillor profile lives in councillorProfiles)
+      const councillor = await CouncillorProfile.findById(userId);
+      if (!councillor) {
         return res.status(404).json({ 
           success: false, 
-          message: 'User not found' 
+          message: 'Councillor not found' 
         });
       }
 
       stats = await WelfareApplication.aggregate([
-        { $match: { userWard: councillorUser.ward } },
+        { $match: { userWard: councillor.ward } },
         {
           $group: {
             _id: null,
