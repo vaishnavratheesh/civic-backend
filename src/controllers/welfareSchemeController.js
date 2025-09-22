@@ -3,12 +3,30 @@ const WelfareApplication = require('../models/WelfareApplication');
 const User = require('../models/User');
 const CouncillorProfile = require('../models/CouncillorProfile');
 
+// Allowed Indian ID/verification documents
+const ALLOWED_INDIAN_DOCUMENTS = new Set([
+  'Aadhar Card',
+  'Ration Card',
+  'Voter ID',
+  'Driving License',
+  'PAN Card',
+  'Passport',
+  'Disability Certificate',
+  'Income Certificate',
+  'Caste Certificate',
+  'Residence Certificate',
+  'BPL Card',
+  'Senior Citizen ID',
+  'Widow Certificate',
+  'Death Certificate'
+]);
+
 // Create new welfare scheme (admin or councillor)
 async function createScheme(req, res) {
   try {
     const { 
       title, description, category, eligibilityCriteria, benefits, 
-      documentsRequired, totalSlots, applicationDeadline, startDate, endDate,
+      requiredDocuments, totalSlots, applicationDeadline, startDate, endDate,
       scope, ward, additionalDetails 
     } = req.body;
 
@@ -39,13 +57,26 @@ async function createScheme(req, res) {
       creatorName = councillor ? councillor.name : 'Ward Councillor';
     }
 
+    // Validate requiredDocuments: must contain at least one allowed document
+    if (!Array.isArray(requiredDocuments) || requiredDocuments.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one required document is mandatory' });
+    }
+    const invalidDocs = requiredDocuments.filter(d => !d || !d.name || !ALLOWED_INDIAN_DOCUMENTS.has(String(d.name)));
+    if (invalidDocs.length > 0) {
+      return res.status(400).json({ success: false, message: 'Required documents must be valid Indian ID documents' });
+    }
+
     const scheme = new WelfareScheme({
       title,
       description,
       category,
       eligibilityCriteria,
       benefits,
-      documentsRequired: documentsRequired || [],
+      requiredDocuments: Array.isArray(requiredDocuments) ? requiredDocuments.map(d => ({
+        name: d.name,
+        type: d.type || 'file',
+        formats: Array.isArray(d.formats) ? d.formats : []
+      })) : [],
       totalSlots,
       availableSlots: totalSlots,
       additionalDetails: additionalDetails || '',
@@ -79,10 +110,8 @@ async function createScheme(req, res) {
 // Get all schemes (admin view - all schemes, councillor view - their schemes + panchayath schemes)
 async function getSchemes(req, res) {
   try {
-    console.log('getSchemes called with user:', req.user);
     const { id: userId, role } = req.user;
     const { scope, ward, category, status } = req.query;
-    console.log('Query params:', { scope, ward, category, status });
 
     let query = {};
 
@@ -106,25 +135,12 @@ async function getSchemes(req, res) {
         });
       }
 
-      console.log('Councillor found:', councillor.name, 'ID:', userId);
-      
-      // Check what schemes exist in the database
-      const allSchemes = await WelfareScheme.find({}).sort({ createdAt: -1 });
-      console.log('All schemes in database:', allSchemes.map(s => ({ 
-        id: s._id, 
-        title: s.title, 
-        creatorId: s.creatorId, 
-        creatorName: s.creatorName 
-      })));
-
       query.$or = [
         { creatorId: userId }, // Schemes created by this councillor
         { scope: 'panchayath' } // Panchayath-wide schemes
       ];
 
-      console.log('Query being used:', JSON.stringify(query));
       schemes = await WelfareScheme.find(query).sort({ createdAt: -1 });
-      console.log('Found schemes for councillor:', schemes.length);
     } else {
       return res.status(403).json({ 
         success: false, 
@@ -132,7 +148,6 @@ async function getSchemes(req, res) {
       });
     }
 
-    console.log('Returning schemes:', schemes.length);
     res.json({
       success: true,
       schemes
@@ -152,8 +167,6 @@ async function getSchemesForCitizens(req, res) {
   try {
     const { ward } = req.params;
     
-    console.log('getSchemesForCitizens called for ward:', ward);
-    console.log('Request user info:', req.user);
     
     if (!ward) {
       return res.status(400).json({ 
@@ -162,47 +175,6 @@ async function getSchemesForCitizens(req, res) {
       });
     }
 
-    // First, let's see all schemes in the database
-    const allSchemes = await WelfareScheme.find({}).sort({ createdAt: -1 });
-    console.log('All schemes in database:', allSchemes.map(s => ({
-      id: s._id,
-      title: s.title,
-      ward: s.ward,
-      scope: s.scope,
-      status: s.status,
-      approved: s.approved,
-      applicationDeadline: s.applicationDeadline,
-      creatorName: s.creatorName,
-      creatorId: s.creatorId
-    })));
-
-    // Let's check each scheme individually to see why it's being filtered out
-    console.log('\n=== ANALYZING EACH SCHEME ===');
-    allSchemes.forEach((scheme, index) => {
-      console.log(`\nScheme ${index + 1}: ${scheme.title}`);
-      console.log(`  - Ward: ${scheme.ward} (requested: ${ward})`);
-      console.log(`  - Scope: ${scheme.scope}`);
-      console.log(`  - Status: ${scheme.status}`);
-      console.log(`  - Approved: ${scheme.approved}`);
-      console.log(`  - Application Deadline: ${scheme.applicationDeadline}`);
-      console.log(`  - Is deadline in future? ${scheme.applicationDeadline > new Date()}`);
-      
-      // Check if this scheme should be visible to this ward
-      const isWardMatch = scheme.ward === parseInt(ward);
-      const isPanchayathWide = scheme.scope === 'panchayath';
-      const isActive = scheme.status === 'active';
-      const isApproved = scheme.approved === true;
-      const isNotExpired = scheme.applicationDeadline > new Date();
-      
-      console.log(`  - Ward match: ${isWardMatch}`);
-      console.log(`  - Panchayath wide: ${isPanchayathWide}`);
-      console.log(`  - Active: ${isActive}`);
-      console.log(`  - Approved: ${isApproved}`);
-      console.log(`  - Not expired: ${isNotExpired}`);
-      
-      const shouldShow = (isWardMatch || isPanchayathWide) && isActive && isApproved && isNotExpired;
-      console.log(`  - SHOULD SHOW: ${shouldShow}`);
-    });
 
     // Get schemes available for this ward
     const schemes = await WelfareScheme.find({
@@ -215,9 +187,6 @@ async function getSchemesForCitizens(req, res) {
       applicationDeadline: { $gt: new Date() } // Not expired
     }).sort({ createdAt: -1 });
     
-    console.log('\n=== FINAL RESULT ===');
-    console.log('Final schemes count:', schemes.length);
-    console.log('Final schemes:', schemes.map(s => s.title));
 
     res.json({
       success: true,
@@ -233,12 +202,35 @@ async function getSchemesForCitizens(req, res) {
   }
 }
 
+// Get single scheme details (public for viewing requirements)
+async function getScheme(req, res) {
+  try {
+    const { id } = req.params;
+    const scheme = await WelfareScheme.findById(id);
+    if (!scheme) {
+      return res.status(404).json({ success: false, message: 'Scheme not found' });
+    }
+    res.json({ success: true, scheme });
+  } catch (error) {
+    console.error('Error fetching scheme:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch scheme' });
+  }
+}
+
 // Update welfare scheme
 async function updateScheme(req, res) {
   try {
     const { id } = req.params;
     const { id: userId, role } = req.user;
     const updateData = req.body;
+
+    if (Array.isArray(updateData.requiredDocuments)) {
+      updateData.requiredDocuments = updateData.requiredDocuments.map(d => ({
+        name: d.name,
+        type: d.type || 'file',
+        formats: Array.isArray(d.formats) ? d.formats : []
+      }));
+    }
 
     const scheme = await WelfareScheme.findById(id);
     if (!scheme) {
@@ -259,7 +251,7 @@ async function updateScheme(req, res) {
     // Update allowed fields
     const allowedFields = [
       'title', 'description', 'category', 'eligibilityCriteria', 'benefits',
-      'documentsRequired', 'totalSlots', 'applicationDeadline', 'startDate', 
+      'requiredDocuments', 'totalSlots', 'applicationDeadline', 'startDate', 
       'endDate', 'status'
     ];
 
@@ -401,6 +393,7 @@ async function getSchemeStats(req, res) {
 module.exports = {
   createScheme,
   getSchemes,
+  getScheme,
   getSchemesForCitizens,
   updateScheme,
   deleteScheme,

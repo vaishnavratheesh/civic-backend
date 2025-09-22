@@ -5,6 +5,7 @@ const User = require('../models/User');
 const CouncillorProfile = require('../models/CouncillorProfile');
 const OTP = require('../models/OTP');
 const PasswordResetToken = require('../models/PasswordResetToken');
+const PastMember = require('../models/PastMember');
 const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const generateOTP = require('../utils/generateOTP');
 
@@ -15,8 +16,12 @@ const googleClient = new OAuth2Client(config.GOOGLE_CLIENT_ID);
 async function register(req, res) {
   const { name, email, password, ward, panchayath } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
+    const [existingUser, pastMember] = await Promise.all([
+      User.findOne({ email }),
+      PastMember.findOne({ email })
+    ]);
     if (existingUser) return res.status(400).json({ error: 'Email already exists' });
+    if (pastMember) return res.status(400).json({ error: 'This email belongs to a past member and cannot be reused' });
     const otp = generateOTP();
     const hashedPassword = await bcrypt.hash(password, 10);
     await OTP.findOneAndDelete({ email });
@@ -49,7 +54,7 @@ async function verifyOTP(req, res) {
       ward: userData.ward,
       panchayath: userData.panchayath,
       registrationSource: 'manual',
-      isVerified: true
+      isVerified: false // New users need verification by councillor
     });
     await user.save();
     await OTP.findOneAndDelete({ email });
@@ -193,8 +198,12 @@ async function googleRegister(req, res) {
     const payload = ticket.getPayload();
     const email = payload.email;
     const name = payload.name;
-    const existingUser = await User.findOne({ email });
+    const [existingUser, pastMember] = await Promise.all([
+      User.findOne({ email }),
+      PastMember.findOne({ email })
+    ]);
     if (existingUser) return res.status(400).json({ error: 'User already exists with this email' });
+    if (pastMember) return res.status(400).json({ error: 'This email belongs to a past member and cannot be reused' });
     const newUser = new User({ name, email, ward, panchayath, password: null });
     await newUser.save();
     res.json({ message: 'User registered successfully' });
@@ -213,9 +222,13 @@ async function googleRegisterComplete(req, res) {
     const name = payload.name;
     const picture = payload.picture;
     const googleId = payload.sub;
-    const existingUser = await User.findOne({ email });
+    const [existingUser, pastMember] = await Promise.all([
+      User.findOne({ email }),
+      PastMember.findOne({ email })
+    ]);
     if (existingUser) return res.status(400).json({ error: 'User already exists with this email. Please try logging in instead.' });
-    const newUser = new User({ name, email, ward, panchayath, password: null, googleId, profilePicture: picture, registrationSource: 'google' });
+    if (pastMember) return res.status(400).json({ error: 'This email belongs to a past member and cannot be reused' });
+    const newUser = new User({ name, email, ward, panchayath, password: null, googleId, profilePicture: picture, registrationSource: 'google', isVerified: false });
     await newUser.save();
     const token = jwt.sign({ userId: newUser._id, role: newUser.role }, config.JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, userId: newUser._id, name: newUser.name, email: newUser.email, ward: newUser.ward, panchayath: newUser.panchayath, profilePicture: newUser.profilePicture });
@@ -228,8 +241,11 @@ async function googleRegisterComplete(req, res) {
 async function checkGoogleUser(req, res) {
   const { email } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
-    res.json({ exists: !!existingUser });
+    const [existingUser, pastMember] = await Promise.all([
+      User.findOne({ email }),
+      PastMember.findOne({ email })
+    ]);
+    res.json({ exists: !!existingUser, blocked: !!pastMember });
   } catch (err) {
     res.status(500).json({ error: 'Failed to check user' });
   }

@@ -125,6 +125,12 @@ const welfareApplicationSchema = new mongoose.Schema({
   reason: { type: String, required: true },
   supportingDocuments: [String], // URLs to uploaded documents
   
+  // New: store named document URLs as per scheme requirements
+  documents: [{
+    name: { type: String, required: true },
+    url: { type: String, required: true }
+  }],
+  
   // Scoring and evaluation
   score: { type: Number, required: false }, // AI-generated score
   justification: { type: String, required: false }, // AI-generated justification
@@ -134,6 +140,30 @@ const welfareApplicationSchema = new mongoose.Schema({
     type: String, 
     enum: ['pending', 'under_review', 'approved', 'rejected', 'completed'], 
     default: 'pending' 
+  },
+  // Verification state (manual or AI)
+  verification: {
+    mode: { type: String, enum: ['none', 'manual', 'auto'], default: 'none' },
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    verifiedAt: { type: Date },
+    autoScore: { type: Number },
+    remarks: { type: String },
+    // Optional AI/raw details and history
+    geminiRaw: { type: Object, required: false },
+    suggestedAction: { type: String, enum: ['approve','review','reject'], required: false },
+    history: [{
+      mode: { type: String },
+      verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      verifiedAt: { type: Date },
+      action: { type: String },
+      remarks: { type: String }
+    }]
+  },
+  // Non-breaking: dedicated verification status to avoid changing existing UI status mapping
+  verificationStatus: {
+    type: String,
+    enum: ['Pending', 'Verified-Manual', 'Verified-Auto', 'Rejected'],
+    default: 'Pending'
   },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, required: false }, // admin or councillor ID
   reviewedByName: { type: String, required: false },

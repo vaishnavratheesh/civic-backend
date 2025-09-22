@@ -29,6 +29,17 @@ const userSchema = new mongoose.Schema({
   emergencyContact: { type: String, required: false }, // Emergency contact number
   emergencyContactRelation: { type: String, required: false }, // Relation to emergency contact
   
+  // Identity proof for councillor verification
+  idProof: {
+    type: {
+      type: String,
+      enum: ['aadhar', 'voter_id', 'driving_license', 'ration_card', 'passport'],
+      required: false
+    },
+    fileUrl: { type: String, required: false },
+    uploadedAt: { type: Date, required: false }
+  },
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

@@ -1,6 +1,9 @@
 // Configuration file for the Civic+ backend
 // In production, these should be set via environment variables
 
+// Load environment variables
+require('dotenv').config();
+
 const config = {
   // Server Configuration
   PORT: process.env.PORT || 3002,

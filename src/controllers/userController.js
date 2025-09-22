@@ -203,6 +203,33 @@ module.exports = {
   changePassword 
 };
 
+// Upload ID proof for verification
+async function uploadIdProof(req, res) {
+  const { id } = req.params;
+  const { type } = req.body; // aadhar | voter_id | ...
+  try {
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!type) return res.status(400).json({ error: 'Proof type is required' });
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    user.idProof = { type, fileUrl, uploadedAt: new Date() };
+    user.updatedAt = new Date();
+    await user.save();
+
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    res.json({ message: 'ID proof uploaded successfully', user: userResponse });
+  } catch (err) {
+    console.error('uploadIdProof error:', err);
+    res.status(500).json({ error: 'Failed to upload ID proof' });
+  }
+}
+
+module.exports.uploadIdProof = uploadIdProof;
+
 // Get ward statistics (public endpoint for simple stats)
 async function getWardStats(req, res) {
   try {

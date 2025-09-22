@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 const upload = require('../middleware/upload');
+const auth = require('../middleware/auth');
 
 // Email existence check
 router.post('/check-email', userController.checkEmail);
@@ -20,6 +21,9 @@ router.put('/users/:id', upload.single('profilePicture'), userController.updateP
 
 // Update profile picture only
 router.put('/users/:id/profile-picture', upload.single('profilePicture'), userController.updateProfilePicture);
+
+// Upload ID proof for verification
+router.post('/users/:id/id-proof', auth, upload.single('idProof'), userController.uploadIdProof);
 
 // Change password
 router.put('/users/:id/password', userController.changePassword);

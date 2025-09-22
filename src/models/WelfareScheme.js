@@ -6,7 +6,17 @@ const welfareSchemeSchema = new mongoose.Schema({
   category: { type: String, required: true }, // e.g., 'Education', 'Healthcare', 'Housing', 'Employment'
   eligibilityCriteria: { type: String, required: true },
   benefits: { type: String, required: true },
-  documentsRequired: [String],
+  requiredDocuments: [{
+    name: {
+      type: String,
+      enum: [
+        'Aadhar Card','Ration Card','Voter ID','Driving License','PAN Card','Passport','Disability Certificate','Income Certificate','Caste Certificate','Residence Certificate','BPL Card','Senior Citizen ID','Widow Certificate','Death Certificate'
+      ],
+      required: false
+    },
+    type: { type: String, default: 'file' },
+    formats: [{ type: String }]
+  }],
   totalSlots: { type: Number, required: true },
   availableSlots: { type: Number, required: true },
   additionalDetails: { type: String, required: false }, // Optional additional information
