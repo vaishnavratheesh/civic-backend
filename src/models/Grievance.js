@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const grievanceSchema = new mongoose.Schema({
+  // Citizen reference
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -14,6 +15,15 @@ const grievanceSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  // Title and category (optional)
+  title: {
+    type: String,
+    default: ''
+  },
+  category: {
+    type: String,
+    default: ''
+  },
   issueType: {
     type: String,
     required: true,
@@ -24,6 +34,7 @@ const grievanceSchema = new mongoose.Schema({
     required: true,
     maxlength: 1000
   },
+  // Location details
   location: {
     lat: {
       type: Number,
@@ -38,19 +49,74 @@ const grievanceSchema = new mongoose.Schema({
       required: true
     }
   },
+  // GeoJSON point for geospatial queries
+  geo: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number], // [lng, lat]
+      default: undefined
+    }
+  },
+  // Backward compatibility: primary image URL
   imageURL: {
     type: String,
     default: null
   },
+  // Attachments (image/pdf)
+  attachments: [{
+    url: { type: String },
+    type: { type: String } // image/pdf
+  }],
+  // OCR text per file
+  ocrText: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  // AI classification label
+  aiClassification: {
+    type: String,
+    default: ''
+  },
+  // Credibility scoring and signals
+  credibilityScore: {
+    type: Number,
+    default: 0
+  },
+  geoValid: {
+    type: Boolean,
+    default: true
+  },
+  duplicateFlag: {
+    type: Boolean,
+    default: false
+  },
+  imageHashes: [{ type: String }],
   priorityScore: {
     type: Number,
-    default: 1,
-    min: 1,
-    max: 5
+    default: 1
   },
+  // Duplicate grouping
+  duplicateGroupId: {
+    type: String,
+    default: null,
+    index: true
+  },
+  duplicateCount: {
+    type: Number,
+    default: 1
+  },
+  // Aggregated participation
+  citizenIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  upvotes: { type: Number, default: 1 },
+  // Unique users who supported/upvoted this grievance group (stored on leader doc)
+  upvoters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'resolved', 'rejected'],
+    enum: ['pending', 'in_progress', 'resolved', 'rejected', 'assigned', 'Pending', 'InProgress', 'Resolved', 'Rejected', 'Assigned'],
     default: 'pending'
   },
   assignedTo: {
@@ -75,6 +141,20 @@ const grievanceSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  // Credibility flags and audit
+  flags: [{ type: String }],
+  audit: {
+    submittedAt: { type: Date },
+    ip: { type: String },
+    device: { type: String }
+  },
+  // Action history audit
+  actionHistory: [{
+    action: { type: String },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    at: { type: Date, default: Date.now },
+    remarks: { type: String }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -84,6 +164,9 @@ const grievanceSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Indexes
+grievanceSchema.index({ geo: '2dsphere' });
 
 // Update the updatedAt field before saving
 grievanceSchema.pre('save', function(next) {
