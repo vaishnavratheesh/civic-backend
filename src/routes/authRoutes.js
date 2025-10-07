@@ -12,6 +12,7 @@ router.post('/google-login', authController.googleLogin);
 router.post('/google-register', authController.googleRegister);
 router.post('/google-register-complete', authController.googleRegisterComplete);
 router.post('/check-google-user', authController.checkGoogleUser);
+router.post('/check-email', authController.checkEmail);
 router.post('/create-admin', authController.createAdmin);
 
 module.exports = router;

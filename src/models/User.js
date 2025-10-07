@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema({
     longitude: { type: Number, required: false },
     formattedAddress: { type: String, required: false }
   },
-  role: { type: String, enum: ['citizen', 'councillor', 'officer', 'admin'], default: 'citizen' },
+  role: { type: String, enum: ['citizen', 'councillor', 'officer', 'admin', 'president'], default: 'citizen' },
   approved: { type: Boolean, default: false },
   
   // Councillor-specific fields

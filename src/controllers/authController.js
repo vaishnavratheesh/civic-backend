@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const CouncillorProfile = require('../models/CouncillorProfile');
+const PresidentProfile = require('../models/PresidentProfile');
 const OTP = require('../models/OTP');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const PastMember = require('../models/PastMember');
@@ -92,6 +93,15 @@ async function login(req, res) {
     if (user) {
       const isMatch = await bcrypt.compare(password, user.password || '');
       if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+      // Auto-assign president role for demo credentials
+      if (email === 'presidenterumely1@gmail.com' && password === 'Presidenterumely1@123') {
+        if (user.role !== 'president') {
+          user.role = 'president';
+          user.approved = true;
+          user.isVerified = true;
+          await user.save();
+        }
+      }
       const token = jwt.sign({ userId: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '7d' });
       return res.json({ 
         token, 
@@ -107,22 +117,51 @@ async function login(req, res) {
 
     // Then try councillor profiles
     const councillor = await CouncillorProfile.findOne({ email });
-    if (!councillor) return res.status(400).json({ error: 'Invalid credentials' });
-    const isMatch = await bcrypt.compare(password, councillor.password || '');
-    if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+    if (councillor) {
+      const isMatch = await bcrypt.compare(password, councillor.password || '');
+      if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+      const token = jwt.sign({ userId: councillor._id, role: 'councillor' }, config.JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        token,
+        userId: councillor._id,
+        name: councillor.name,
+        email: councillor.email,
+        ward: councillor.ward,
+        panchayath: councillor.panchayath,
+        profilePicture: councillor.profilePicture,
+        role: 'councillor'
+      });
+    }
 
-    // Councillor token carries role=councillor
-    const token = jwt.sign({ userId: councillor._id, role: 'councillor' }, config.JWT_SECRET, { expiresIn: '7d' });
-    return res.json({
-      token,
-      userId: councillor._id,
-      name: councillor.name,
-      email: councillor.email,
-      ward: councillor.ward,
-      panchayath: councillor.panchayath,
-      profilePicture: councillor.profilePicture,
-      role: 'councillor'
-    });
+    // Then try president profiles
+    let president = await PresidentProfile.findOne({ email });
+    if (!president && email === 'presidenterumely1@gmail.com') {
+      // Auto-bootstrap demo president record if missing
+      const hashed = await bcrypt.hash('Presidenterumely1@123', 10);
+      president = await PresidentProfile.create({
+        name: 'Panchayat President',
+        email: 'presidenterumely1@gmail.com',
+        password: hashed,
+        panchayath: 'Erumeli Panchayath'
+      });
+    }
+    if (president) {
+      const isMatch = await bcrypt.compare(password, president.password || '');
+      if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+      const token = jwt.sign({ userId: president._id, role: 'president' }, config.JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        token,
+        userId: president._id,
+        name: president.name,
+        email: president.email,
+        ward: 0,
+        panchayath: president.panchayath,
+        profilePicture: president.profilePicture,
+        role: 'president'
+      });
+    }
+
+    return res.status(400).json({ error: 'Invalid credentials' });
   } catch (err) {
     res.status(500).json({ error: 'Login failed' });
   }
@@ -251,6 +290,21 @@ async function checkGoogleUser(req, res) {
   }
 }
 
+// Email existence check across users, councillors, president
+async function checkEmail(req, res) {
+  const { email } = req.body;
+  try {
+    const [u, c, p] = await Promise.all([
+      User.findOne({ email }).lean(),
+      CouncillorProfile.findOne({ email }).lean(),
+      PresidentProfile.findOne({ email }).lean()
+    ]);
+    res.json({ exists: !!(u || c || p) });
+  } catch (err) {
+    res.status(500).json({ exists: false });
+  }
+}
+
 // Create Admin User (for development/testing)
 async function createAdmin(req, res) {
   try {
@@ -307,5 +361,6 @@ module.exports = {
   googleRegister,
   googleRegisterComplete,
   checkGoogleUser,
+  checkEmail,
   createAdmin // Add this to exports
 };

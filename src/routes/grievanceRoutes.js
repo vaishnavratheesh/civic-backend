@@ -10,6 +10,9 @@ router.get('/grievances/ward-lookup', auth, grievanceController.lookupWardByCoor
 // Create a new grievance (citizen) with optional attachments
 router.post('/grievances', auth, upload.any(), grievanceController.createGrievance);
 
+// Quick duplicate check prior to upload
+router.post('/grievances/check-duplicate', auth, grievanceController.checkDuplicateQuick);
+
 // Get user's own grievances (citizen)
 router.get('/grievances/my', auth, grievanceController.getMyGrievances);
 

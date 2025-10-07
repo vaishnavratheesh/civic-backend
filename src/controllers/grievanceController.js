@@ -15,6 +15,57 @@ const turf = require('@turf/turf');
 const crypto = require('crypto');
 const fs = require('fs');
 
+// Lightweight duplicate check without creating/updating any records
+const checkDuplicateQuick = async (req, res) => {
+  try {
+    const { description, location, title, issueType } = req.body || {};
+    let loc;
+    try {
+      loc = typeof location === 'string' ? JSON.parse(location) : location;
+    } catch (_) {
+      loc = location;
+    }
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
+      return res.status(400).json({ message: 'Invalid or missing location (lat,lng required)' });
+    }
+    const userId = req.user?.id;
+    const wardInfo = getWardByPoint({ lat: loc.lat, lng: loc.lng });
+    const ward = wardInfo.ward;
+
+    const since = new Date(Date.now() - (parseInt(process.env.DUP_LOOKBACK_H || '168') * 3600 * 1000));
+    const candidates = await Grievance.find({
+      createdAt: { $gte: since },
+      ward,
+      status: { $in: ['pending', 'in_progress', 'assigned', 'Pending', 'InProgress', 'Assigned'] }
+    }).select('description location duplicateGroupId duplicateCount upvoters userId createdAt').lean();
+
+    const pt = turf.point([loc.lng, loc.lat]);
+    const radiusM = parseInt(process.env.DUP_RADIUS_GROUP_M || '100');
+    const radiusKm = radiusM / 1000;
+    let best = null;
+    let bestScore = 0;
+    const text = `${title || ''} ${issueType || ''} ${description || ''}`.trim().toLowerCase();
+    for (const c of candidates) {
+      const distKm = turf.distance(pt, turf.point([c.location.lng, c.location.lat]), { units: 'kilometers' });
+      if (distKm > radiusKm) continue;
+      const sim = stringSimilarity.compareTwoStrings(text, (c.description || '').toLowerCase());
+      if (sim > 0.3 && sim > bestScore) { best = c; bestScore = sim; }
+    }
+
+    if (!best) return res.json({ duplicate: false, ward });
+
+    const leaderId = best.duplicateGroupId || (best._id?.toString?.());
+    const leader = await Grievance.findOne({ $or: [ { _id: leaderId }, { duplicateGroupId: leaderId } ] }).sort({ createdAt: 1 }).lean();
+    const hasUpvoted = !!(leader && Array.isArray(leader.upvoters) && userId && leader.upvoters.some(id => id.toString() === userId.toString()));
+    const sameUser = !!(userId && (best.userId?.toString?.() === userId.toString()));
+    const upvoteCount = leader?.duplicateCount || 1;
+    return res.json({ duplicate: true, groupId: leaderId, upvoteCount, sameUser, hasUpvoted, ward });
+  } catch (e) {
+    console.error('checkDuplicateQuick error:', e);
+    return res.status(500).json({ message: 'Duplicate check failed' });
+  }
+};
+
 // Create a new grievance (multipart optional). Saves attachments to Cloudinary when files present.
 const createGrievance = async (req, res) => {
   try {
@@ -55,8 +106,28 @@ const createGrievance = async (req, res) => {
       }
     }
 
+    // Normalize issueType to schema enum to avoid validation errors
+    const ALLOWED_TYPES = ['Road Repair', 'Streetlight Outage', 'Waste Management', 'Water Leakage', 'Public Nuisance', 'Drainage', 'Other'];
+    function inferIssueTypeFromText(text) {
+      const t = (text || '').toLowerCase();
+      if (/(pothole|road|tarmac|asphalt)/.test(t)) return 'Road Repair';
+      if (/(garbage|waste|trash|dump)/.test(t)) return 'Waste Management';
+      if (/(water|leak|pipe|sewage|drainage)/.test(t)) return 'Water Leakage';
+      if (/(drain|sewer)/.test(t)) return 'Drainage';
+      if (/(streetlight|light|lamp|electric)/.test(t)) return 'Streetlight Outage';
+      if (/(nuisance|noise|public)/.test(t)) return 'Public Nuisance';
+      return 'Other';
+    }
+    const preferredText = `${issueType || ''} ${title || ''} ${description || ''}`.trim();
+    let normalizedIssueType = ALLOWED_TYPES.includes(issueType) ? issueType : inferIssueTypeFromText(preferredText);
+
     // Geo validation
-    const loc = typeof location === 'string' ? JSON.parse(location) : location;
+    let loc;
+    try {
+      loc = typeof location === 'string' ? JSON.parse(location) : location;
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid location payload' });
+    }
     if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
       return res.status(400).json({ message: 'Invalid or missing location (lat,lng required)' });
     }
@@ -217,9 +288,9 @@ const createGrievance = async (req, res) => {
       ward: actualWard,
       title: title || issueType || '',
       category: category || '',
-      issueType: issueType || title || '',
+      issueType: normalizedIssueType,
       description,
-      location: { ...loc, ward: actualWard },
+      location: { lat: loc.lat, lng: loc.lng, address: (loc.address || loc.formattedAddress || 'Unknown address') },
       geo: { type: 'Point', coordinates: [loc.lng, loc.lat] },
       imageURL: primaryImageURL,
       attachments,
@@ -377,7 +448,7 @@ const getMyGrievances = async (req, res) => {
       location: grievance.location,
       priorityScore: grievance.priorityScore,
       duplicateGroupId: grievance.duplicateGroupId || grievance._id?.toString?.(),
-      duplicateCount: grievance.duplicateCount || 1,
+      duplicateCount: Math.max(grievance.duplicateCount || 1, Array.isArray(grievance.upvoters) ? 1 + grievance.upvoters.length : 1),
       status: grievance.status,
       assignedTo: grievance.assignedTo?._id || null,
       officerName: grievance.assignedTo?.name || grievance.officerName || null,
@@ -416,7 +487,7 @@ const getCommunityGrievances = async (req, res) => {
       location: grievance.location,
       priorityScore: grievance.priorityScore,
       duplicateGroupId: grievance.duplicateGroupId || grievance._id?.toString?.(),
-      duplicateCount: grievance.duplicateCount || 1,
+      duplicateCount: Math.max(grievance.duplicateCount || 1, Array.isArray(grievance.upvoters) ? 1 + grievance.upvoters.length : 1),
       status: grievance.status,
       credibilityScore: grievance.credibilityScore,
       flags: grievance.flags || [],
@@ -474,7 +545,7 @@ const getAllGrievances = async (req, res) => {
       location: grievance.location,
       priorityScore: grievance.priorityScore,
       duplicateGroupId: grievance.duplicateGroupId || grievance._id?.toString?.(),
-      duplicateCount: grievance.duplicateCount || 1,
+      duplicateCount: Math.max(grievance.duplicateCount || 1, Array.isArray(grievance.upvoters) ? 1 + grievance.upvoters.length : 1),
       status: grievance.status,
       credibilityScore: grievance.credibilityScore,
       flags: grievance.flags || [],
@@ -837,38 +908,51 @@ const upvoteGrievance = async (req, res) => {
       return res.status(404).json({ message: 'Grievance not found' });
     }
 
-    // Check if user already upvoted
-    const hasUpvoted = Array.isArray(grievance.upvoters) && grievance.upvoters.some(upvoterId => upvoterId.toString() === userId.toString());
-    
-    console.log(`[UPVOTE] User ${userId} has already upvoted: ${hasUpvoted}`);
-    
+    // Determine the group leader document (first doc in group)
+    const groupId = grievance.duplicateGroupId || grievance._id.toString();
+    const groupLeader = await Grievance.findOne({ $or: [ { _id: groupId }, { duplicateGroupId: groupId } ] }).sort({ createdAt: 1 });
+    const leaderId = groupLeader ? groupLeader._id : grievance._id;
+
+    // Check if user already upvoted on the leader
+    const hasUpvoted = Array.isArray(groupLeader?.upvoters) && groupLeader.upvoters.some(upvoterId => upvoterId.toString() === userId.toString());
+    console.log(`[UPVOTE] User ${userId} has already upvoted (group ${groupId}): ${hasUpvoted}`);
     if (hasUpvoted) {
       return res.status(400).json({ message: 'You have already upvoted this grievance' });
     }
 
-    // Add upvote
-    await Grievance.findByIdAndUpdate(id, {
-      $addToSet: { upvoters: userId },
-      $inc: { upvotes: 1, duplicateCount: 1 }
-    });
+    // Add upvote on leader and track unique supporters
+    await Grievance.updateOne(
+      { _id: leaderId },
+      { $addToSet: { upvoters: userId, citizenIds: userId }, $inc: { upvotes: 1 } }
+    );
 
-    // Recalculate priority
-    const updatedGrievance = await Grievance.findById(id);
-    const totalUpvotes = updatedGrievance.upvoters.length;
-    const severityWeight = getSeverityWeight(updatedGrievance.category || updatedGrievance.issueType || 'Other');
-    const credibilityWeight = (updatedGrievance.credibilityScore || 0) * 30;
-    const duplicateWeight = Math.min(totalUpvotes * 5, 30);
-    const newPriority = severityWeight + credibilityWeight + duplicateWeight;
+    // Recompute duplicateCount from unique supporters; set across entire group
+    const refreshedLeader = await Grievance.findById(leaderId).lean();
+    const supporterCount = Array.isArray(refreshedLeader?.upvoters) ? refreshedLeader.upvoters.length : 0;
+    const newDupCount = Math.max(1 + supporterCount, (refreshedLeader?.duplicateCount || 1));
 
-    await Grievance.findByIdAndUpdate(id, { priorityScore: newPriority });
+    await Grievance.updateMany(
+      { $or: [ { _id: leaderId }, { duplicateGroupId: groupId } ] },
+      { $set: { duplicateCount: newDupCount } }
+    );
 
-    console.log(`[UPVOTE] Successfully upvoted grievance ${id}. Total upvotes: ${totalUpvotes}, New priority: ${newPriority}`);
+    // Recalculate and persist priority for all docs in the group
+    const docsForUpdate = await Grievance.find({ $or: [ { _id: leaderId }, { duplicateGroupId: groupId } ] }).select('_id credibilityScore category issueType').lean();
+    const duplicateWeight = Math.min(newDupCount * 10, 30);
+    for (const d of docsForUpdate) {
+      const sev = getSeverityWeight(d.category || d.issueType || 'Other');
+      const credW = (d.credibilityScore || 0) * 30;
+      const newPriority = sev + credW + duplicateWeight;
+      await Grievance.updateOne({ _id: d._id }, { priorityScore: newPriority });
+    }
+
+    console.log(`[UPVOTE] Upvoted group ${groupId}. Upvotes(now supporters+1): ${newDupCount}, propagated to group`);
 
     res.json({
       success: true,
       message: 'Grievance upvoted successfully',
-      upvoteCount: totalUpvotes,
-      priorityScore: newPriority
+      upvoteCount: newDupCount,
+      priorityScore: undefined
     });
   } catch (error) {
     console.error('Error upvoting grievance:', error);
@@ -878,6 +962,7 @@ const upvoteGrievance = async (req, res) => {
 
 module.exports = {
   createGrievance,
+  checkDuplicateQuick,
   lookupWardByCoordinates,
   getMyGrievances,
   getCommunityGrievances,
@@ -890,4 +975,5 @@ module.exports = {
   getGrievancesForReview,
   upvoteGrievance
 };
+
 
