@@ -4,7 +4,7 @@ const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   password: { type: String, required: false }, // Allow null for Google users
-  ward: { type: Number, required: true },
+  ward: { type: Number, required: false }, // Make ward optional for admin/president
   panchayath: { type: String, default: 'Erumeli Panchayath' }, // Default to Erumeli Panchayath
   googleId: { type: String, required: false }, // Google user ID
   profilePicture: { type: String, required: false }, // Profile picture URL
@@ -19,6 +19,9 @@ const userSchema = new mongoose.Schema({
   },
   role: { type: String, enum: ['citizen', 'councillor', 'officer', 'admin', 'president'], default: 'citizen' },
   approved: { type: Boolean, default: false },
+  active: { type: Boolean, default: true }, // For deactivating users
+  tokenVersion: { type: Number, default: 0 }, // For token invalidation
+  wardNumber: { type: Number, required: false }, // Alias for ward for consistency
   
   // Councillor-specific fields
   appointmentDate: { type: Date, required: false }, // Date appointed as ward member
@@ -42,6 +45,14 @@ const userSchema = new mongoose.Schema({
 
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
+});
+
+// Pre-save middleware to sync ward and wardNumber
+userSchema.pre('save', function(next) {
+  if (this.wardNumber !== undefined && this.wardNumber !== this.ward) {
+    this.ward = this.wardNumber;
+  }
+  next();
 });
 
 module.exports = mongoose.model('User', userSchema, 'users');

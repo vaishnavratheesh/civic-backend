@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const CouncillorProfile = require('../models/CouncillorProfile');
+const Message = require('../models/Message');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
@@ -248,10 +249,184 @@ async function updateProfile(req, res) {
   }
 }
 
+// Messaging functions for councillors
+exports.listMessages = async (req, res) => {
+  try {
+    const { threadId } = req.query;
+    let filter = {};
+    
+    if (threadId) {
+      filter.threadId = threadId;
+    } else {
+      // Get all messages where councillor is sender or receiver
+      filter.$or = [
+        { senderId: req.user.id },
+        { receiverId: req.user.id }
+      ];
+    }
+    
+    const items = await Message.find(filter)
+      .sort({ createdAt: 1 })
+      .populate('senderId receiverId', 'name email role ward')
+      .lean();
+    
+    res.json({ success: true, items });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Failed to list messages' });
+  }
+};
+
+exports.sendMessage = async (req, res) => {
+  try {
+    const { receiverId, ward, message, threadId } = req.body;
+    
+    // Generate threadId if not provided
+    // Resolve councillor ward if not provided
+    let wardNum = ward;
+    if (!wardNum) {
+      try {
+        const profile = await CouncillorProfile.findById(req.user.id).select('ward');
+        wardNum = profile?.ward || null;
+      } catch {}
+    }
+    const finalThreadId = threadId || `councillor-${wardNum || 'general'}-${Date.now()}`;
+  
+  let doc = await Message.create({ 
+      senderId: req.user.id, 
+      receiverId: receiverId || null, 
+      ward: wardNum || null, 
+      message,
+      threadId: finalThreadId
+    });
+  // populate for clients
+  doc = await doc.populate('senderId receiverId', 'name email role ward');
+    
+  // Emit real-time message to Socket.IO
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        if (wardNum) io.to(`ward:${wardNum}`).emit('message:new', { message: doc, threadId: finalThreadId, ward: wardNum });
+        io.to('president').emit('message:new', { message: doc, threadId: finalThreadId, ward: wardNum });
+      }
+    } catch (socketError) {
+      console.log('Socket emit failed:', socketError.message);
+    }
+    
+    res.status(201).json({ success: true, item: doc });
+  } catch (e) {
+    res.status(400).json({ success: false, message: 'Failed to send message' });
+  }
+};
+
+// File message from councillor
+exports.sendFileMessage = async (req, res) => {
+  try {
+    const { receiverId, ward, threadId } = req.body;
+    if (!req.file) return res.status(400).json({ success: false, message: 'File is required' });
+
+    let wardNum = ward;
+    if (!wardNum) {
+      try {
+        const profile = await CouncillorProfile.findById(req.user.id).select('ward');
+        wardNum = profile?.ward || null;
+      } catch {}
+    }
+    const finalThreadId = threadId || `councillor-${wardNum || 'general'}-${Date.now()}`;
+    let doc = await Message.create({
+      senderId: req.user.id,
+      receiverId: receiverId || null,
+      ward: wardNum || null,
+      message: req.file.originalname,
+      messageType: 'file',
+      fileUrl: `/uploads/${req.file.filename}`,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      threadId: finalThreadId
+    });
+    doc = await doc.populate('senderId receiverId', 'name email role ward');
+
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        if (wardNum) io.to(`ward:${wardNum}`).emit('message:new', { message: doc, threadId: finalThreadId, ward: wardNum });
+        io.to('president').emit('message:new', { message: doc, threadId: finalThreadId, ward: wardNum });
+      }
+    } catch {}
+
+    res.status(201).json({ success: true, item: doc });
+  } catch (e) {
+    res.status(400).json({ success: false, message: 'Failed to send file' });
+  }
+};
+
+exports.getConversations = async (req, res) => {
+  try {
+    const conversations = await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { senderId: req.user._id },
+            { receiverId: req.user._id }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: '$threadId',
+          lastMessage: { $last: '$message' },
+          lastMessageTime: { $last: '$createdAt' },
+          ward: { $last: '$ward' },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$receiverId', req.user._id] }, { $eq: ['$isRead', false] }] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $sort: { lastMessageTime: -1 }
+      }
+    ]);
+    
+    res.json({ success: true, conversations });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Failed to get conversations' });
+  }
+};
+
+exports.markAsRead = async (req, res) => {
+  try {
+    const { threadId } = req.body;
+    
+    await Message.updateMany(
+      { 
+        threadId: threadId,
+        receiverId: req.user._id,
+        isRead: false
+      },
+      { isRead: true }
+    );
+    
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Failed to mark messages as read' });
+  }
+};
+
 module.exports = {
   councillorLogin,
   completeProfile,
   changePassword,
   getProfile,
-  updateProfile
+  updateProfile,
+  listMessages: exports.listMessages,
+  sendMessage: exports.sendMessage,
+  sendFileMessage: exports.sendFileMessage,
+  getConversations: exports.getConversations,
+  markAsRead: exports.markAsRead
 }; 

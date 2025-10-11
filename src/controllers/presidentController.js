@@ -177,9 +177,26 @@ exports.listMessages = async (req, res) => {
     if (!isPresident(req)) {
       return res.status(403).json({ success: false, message: 'Access denied. President role required.' });
     }
-    const { ward } = req.query;
-    const filter = ward ? { ward: parseInt(ward) } : {};
-    const items = await Message.find(filter).sort({ createdAt: 1 }).populate('senderId receiverId', 'name email role ward').lean();
+    const { ward, threadId } = req.query;
+    let filter = {};
+    
+    if (threadId) {
+      filter.threadId = threadId;
+    } else if (ward) {
+      filter.ward = parseInt(ward);
+    } else {
+      // Get all messages where president is sender or receiver
+      filter.$or = [
+        { senderId: req.user.id },
+        { receiverId: req.user.id }
+      ];
+    }
+    
+    const items = await Message.find(filter)
+      .sort({ createdAt: 1 })
+      .populate('senderId receiverId', 'name email role ward')
+      .lean();
+    
     res.json({ success: true, items });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Failed to list messages' });
@@ -191,15 +208,131 @@ exports.sendMessage = async (req, res) => {
     if (!isPresident(req)) {
       return res.status(403).json({ success: false, message: 'Access denied. President role required.' });
     }
-    const { receiverId, ward, message } = req.body;
-    const doc = await Message.create({ senderId: req.user.id, receiverId: receiverId || null, ward: ward || null, message });
+    const { receiverId, ward, message, threadId, broadcast } = req.body;
+    
+    // Generate threadId if not provided
+    const finalThreadId = threadId || `president-${ward || 'general'}-${Date.now()}`;
+    
+    let doc = await Message.create({ 
+      senderId: req.user.id, 
+      receiverId: receiverId || null, 
+      ward: ward || null, 
+      message,
+      threadId: finalThreadId
+    });
+    // populate sender to avoid nulls on client
+    doc = await doc.populate('senderId receiverId', 'name email role ward');
+    
+    // Emit real-time message to Socket.IO
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        if (broadcast) {
+          io.to('councillors').emit('message:new', { message: doc, threadId: finalThreadId, ward: null, broadcast: true });
+        } else {
+          if (ward) io.to(`ward:${ward}`).emit('message:new', { message: doc, threadId: finalThreadId, ward });
+          if (receiverId) io.to(`user:${receiverId}`).emit('message:new', { message: doc, threadId: finalThreadId, ward });
+        }
+      }
+    } catch (socketError) {
+      console.log('Socket emit failed:', socketError.message);
+    }
+    
     res.status(201).json({ success: true, item: doc });
   } catch (e) {
     res.status(400).json({ success: false, message: 'Failed to send message' });
   }
 };
 
+// Send FILE message
+exports.sendFileMessage = async (req, res) => {
+  try {
+    if (!isPresident(req)) {
+      return res.status(403).json({ success: false, message: 'Access denied. President role required.' });
+    }
+    const { receiverId, ward, threadId, broadcast } = req.body;
+    if (!req.file) return res.status(400).json({ success: false, message: 'File is required' });
+
+    const finalThreadId = threadId || `president-${ward || 'general'}-${Date.now()}`;
+    let doc = await Message.create({
+      senderId: req.user.id,
+      receiverId: receiverId || null,
+      ward: ward || null,
+      message: req.file.originalname,
+      messageType: 'file',
+      fileUrl: `/uploads/${req.file.filename}`,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      threadId: finalThreadId
+    });
+    doc = await doc.populate('senderId receiverId', 'name email role ward');
+
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        if (broadcast) {
+          io.to('councillors').emit('message:new', { message: doc, threadId: finalThreadId, ward: null, broadcast: true });
+        } else {
+          if (ward) io.to(`ward:${ward}`).emit('message:new', { message: doc, threadId: finalThreadId, ward });
+          if (receiverId) io.to(`user:${receiverId}`).emit('message:new', { message: doc, threadId: finalThreadId, ward });
+        }
+      }
+    } catch {}
+
+    res.status(201).json({ success: true, item: doc });
+  } catch (e) {
+    res.status(400).json({ success: false, message: 'Failed to send file' });
+  }
+};
+
+// Get conversations list (threads)
+exports.getConversations = async (req, res) => {
+  try {
+    if (!isPresident(req)) {
+      return res.status(403).json({ success: false, message: 'Access denied. President role required.' });
+    }
+    
+    const conversations = await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { senderId: req.user._id },
+            { receiverId: req.user._id }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: '$threadId',
+          lastMessage: { $last: '$message' },
+          lastMessageTime: { $last: '$createdAt' },
+          ward: { $last: '$ward' },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$receiverId', req.user._id] }, { $eq: ['$isRead', false] }] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $sort: { lastMessageTime: -1 }
+      }
+    ]);
+    
+    res.json({ success: true, conversations });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Failed to get conversations' });
+  }
+};
+
 // 6) Video meeting link (Jitsi suggested)
+
+const Meeting = require('../models/Meeting');
 exports.createMeeting = async (req, res) => {
   try {
     if (!isPresident(req)) {
@@ -208,6 +341,8 @@ exports.createMeeting = async (req, res) => {
     // Create a simple Jitsi room name; in production, secure this properly
     const room = `Erumeli-ESabha-${Date.now()}`;
     const url = `https://meet.jit.si/${room}`;
+    // Save to DB for others to join
+    await Meeting.create({ url, room });
     res.json({ success: true, url, room });
   } catch (e) {
     res.status(500).json({ success: false, message: 'Failed to create meeting' });

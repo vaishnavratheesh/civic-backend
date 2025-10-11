@@ -20,9 +20,9 @@ const config = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || 'your_google_client_secret_here',
 
   // Email Configuration (Gmail)
-  EMAIL_USER: process.env.EMAIL_USER || 'vaishnavratheesh2026@mca.ajce.in',
-  EMAIL_PASS: process.env.EMAIL_PASS || 'vset afhc yyqn zhdi',
-  EMAIL_FROM: process.env.EMAIL_FROM || 'vaishnavratheesh2026@mca.ajce.in',
+  EMAIL_USER: process.env.EMAIL_USER || 'vaishnavratheesh27@gmail.com',
+  EMAIL_PASS: process.env.EMAIL_PASS || 'temp_password',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'vaishnavratheesh27@gmail.com',
 
   // Cloudinary Configuration
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || 'dmxtgfaq2',

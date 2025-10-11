@@ -7,7 +7,8 @@ const PresidentProfile = require('../models/PresidentProfile');
 const OTP = require('../models/OTP');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const PastMember = require('../models/PastMember');
-const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
+const emailUtils = require('../utils/email');
+const { sendOTPEmail, sendPasswordResetEmail } = emailUtils.default || emailUtils;
 const generateOTP = require('../utils/generateOTP');
 
 const config = require('../config/config');
@@ -102,7 +103,12 @@ async function login(req, res) {
           await user.save();
         }
       }
-      const token = jwt.sign({ userId: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ 
+        userId: user._id, 
+        role: user.role, 
+        wardNumber: user.ward,
+        tokenVersion: user.tokenVersion || 0
+      }, config.JWT_SECRET, { expiresIn: '1d' });
       return res.json({ 
         token, 
         userId: user._id, 
@@ -120,7 +126,12 @@ async function login(req, res) {
     if (councillor) {
       const isMatch = await bcrypt.compare(password, councillor.password || '');
       if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
-      const token = jwt.sign({ userId: councillor._id, role: 'councillor' }, config.JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ 
+        userId: councillor._id, 
+        role: 'councillor',
+        wardNumber: councillor.ward,
+        tokenVersion: councillor.tokenVersion || 0
+      }, config.JWT_SECRET, { expiresIn: '1d' });
       return res.json({
         token,
         userId: councillor._id,
@@ -148,7 +159,12 @@ async function login(req, res) {
     if (president) {
       const isMatch = await bcrypt.compare(password, president.password || '');
       if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
-      const token = jwt.sign({ userId: president._id, role: 'president' }, config.JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ 
+        userId: president._id, 
+        role: 'president',
+        wardNumber: null,
+        tokenVersion: president.tokenVersion || 0
+      }, config.JWT_SECRET, { expiresIn: '1d' });
       return res.json({
         token,
         userId: president._id,
@@ -213,7 +229,12 @@ async function googleLogin(req, res) {
     const name = payload.name;
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: 'No account found with this email. Please register first.' });
-    const token = jwt.sign({ userId: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ 
+      userId: user._id, 
+      role: user.role,
+      wardNumber: user.ward,
+      tokenVersion: user.tokenVersion || 0
+    }, config.JWT_SECRET, { expiresIn: '1d' });
     res.json({ 
       token, 
       userId: user._id, 
@@ -269,7 +290,12 @@ async function googleRegisterComplete(req, res) {
     if (pastMember) return res.status(400).json({ error: 'This email belongs to a past member and cannot be reused' });
     const newUser = new User({ name, email, ward, panchayath, password: null, googleId, profilePicture: picture, registrationSource: 'google', isVerified: false });
     await newUser.save();
-    const token = jwt.sign({ userId: newUser._id, role: newUser.role }, config.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ 
+      userId: newUser._id, 
+      role: newUser.role,
+      wardNumber: newUser.ward,
+      tokenVersion: newUser.tokenVersion || 0
+    }, config.JWT_SECRET, { expiresIn: '1d' });
     res.json({ token, userId: newUser._id, name: newUser.name, email: newUser.email, ward: newUser.ward, panchayath: newUser.panchayath, profilePicture: newUser.profilePicture });
   } catch (err) {
     res.status(500).json({ error: 'Google registration failed. Please try again.' });

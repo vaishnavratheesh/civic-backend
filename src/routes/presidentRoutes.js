@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const controller = require('../controllers/presidentController');
+const upload = require('../middleware/upload');
 
 // Ensure user is authenticated; controller re-checks role === 'president'
 router.get('/president/wards', auth, controller.getWardsOverview);
@@ -20,6 +21,8 @@ router.delete('/president/events/:id', auth, controller.deleteEvent);
 // Messages
 router.get('/president/messages', auth, controller.listMessages);
 router.post('/president/messages', auth, controller.sendMessage);
+router.post('/president/messages/file', auth, upload.single('file'), controller.sendFileMessage);
+router.get('/president/conversations', auth, controller.getConversations);
 
 // Video
 router.post('/president/video', auth, controller.createMeeting);

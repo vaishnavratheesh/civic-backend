@@ -133,4 +133,11 @@ router.delete('/councillors/events/:id', auth, requireRole('councillor'), async 
   }
 });
 
+// Messaging endpoints
+router.get('/councillors/messages', auth, requireRole('councillor'), councillorController.listMessages);
+router.post('/councillors/messages', auth, requireRole('councillor'), councillorController.sendMessage);
+router.post('/councillors/messages/file', auth, requireRole('councillor'), upload.single('file'), councillorController.sendFileMessage);
+router.get('/councillors/conversations', auth, requireRole('councillor'), councillorController.getConversations);
+router.post('/councillors/messages/mark-read', auth, requireRole('councillor'), councillorController.markAsRead);
+
 module.exports = router; 
