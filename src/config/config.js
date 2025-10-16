@@ -33,7 +33,7 @@ const config = {
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
 
   // CORS Origins
-  CORS_ORIGINS: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:5173', 'http://localhost:5174'],
+  CORS_ORIGINS: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://localhost:3001'],
 
   // Development overrides
   isDevelopment: process.env.NODE_ENV === 'development',

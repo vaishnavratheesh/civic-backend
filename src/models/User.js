@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: false }, // Email verification status
   address: { type: String, required: false },
   contactNumber: { type: String, required: false },
+  dateOfBirth: { type: Date, required: false },
   location: {
     latitude: { type: Number, required: false },
     longitude: { type: Number, required: false },

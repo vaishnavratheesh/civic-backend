@@ -471,6 +471,137 @@ const testCollections = async (req, res) => {
   }
 };
 
+// Get all users (citizens)
+const getUsers = async (req, res) => {
+  try {
+    console.log('getUsers called - fetching all users');
+    
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    // Get users with pagination
+    const users = await User.find({ role: { $in: ['citizen', 'officer'] } })
+      .select('name email ward panchayath role isVerified approved createdAt registrationSource')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    // Get total count
+    const totalUsers = await User.countDocuments({ role: { $in: ['citizen', 'officer'] } });
+    
+    console.log(`Found ${users.length} users out of ${totalUsers} total`);
+    
+    res.json({
+      success: true,
+      users,
+      pagination: {
+        page,
+        limit,
+        total: totalUsers,
+        pages: Math.ceil(totalUsers / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users',
+      error: error.message
+    });
+  }
+};
+
+// Remove a user
+const removeUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('removeUser called for userId:', userId);
+    
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Don't allow removing admin users
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot remove admin users'
+      });
+    }
+    
+    // Remove the user
+    await User.findByIdAndDelete(userId);
+    
+    console.log(`User ${user.name} (${user.email}) removed successfully`);
+    
+    res.json({
+      success: true,
+      message: `User ${user.name} removed successfully`
+    });
+  } catch (error) {
+    console.error('Error removing user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove user',
+      error: error.message
+    });
+  }
+};
+
+// Toggle user verification status
+const toggleUserVerification = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('toggleUserVerification called for userId:', userId);
+    console.log('Request user:', req.user);
+    console.log('Request method:', req.method);
+    console.log('Request URL:', req.originalUrl);
+    
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Toggle verification status
+    user.isVerified = !user.isVerified;
+    user.approved = user.isVerified; // Also update approved status
+    await user.save();
+    
+    console.log(`User ${user.name} verification status changed to: ${user.isVerified}`);
+    
+    res.json({
+      success: true,
+      message: `User ${user.isVerified ? 'verified' : 'unverified'} successfully`,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        isVerified: user.isVerified,
+        approved: user.approved
+      }
+    });
+  } catch (error) {
+    console.error('Error toggling user verification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update user verification',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getWards,
   getPresident,
@@ -480,5 +611,8 @@ module.exports = {
   removePresident,
   resendCredentials,
   getAuditLogs,
-  testCollections
+  testCollections,
+  getUsers,
+  removeUser,
+  toggleUserVerification
 };

@@ -21,10 +21,19 @@ const requireRole = (allowedRoles) => {
       // Find user and check if active
       const user = await User.findById(decoded.userId).select('role ward active tokenVersion');
       
-      if (!user || !user.active) {
+      console.log('Auth middleware - User found:', user ? `${user.role} (active: ${user.active})` : 'null');
+      
+      if (!user) {
         return res.status(401).json({
           success: false,
-          message: 'Access denied. User not found or inactive.'
+          message: 'Access denied. User not found.'
+        });
+      }
+      
+      if (user.active === false) {
+        return res.status(401).json({
+          success: false,
+          message: 'Access denied. User account is inactive.'
         });
       }
 

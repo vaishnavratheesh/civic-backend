@@ -25,7 +25,7 @@ const ALLOWED_INDIAN_DOCUMENTS = new Set([
 async function createScheme(req, res) {
   try {
     const { 
-      title, description, category, eligibilityCriteria, benefits, 
+      title, description, category, minAge, maxAge, benefits, 
       requiredDocuments, totalSlots, applicationDeadline, startDate, endDate,
       scope, ward, additionalDetails 
     } = req.body;
@@ -66,11 +66,27 @@ async function createScheme(req, res) {
       return res.status(400).json({ success: false, message: 'Required documents must be valid Indian ID documents' });
     }
 
+    // Validate age fields
+    if (!minAge || !maxAge || minAge < 0 || maxAge < 0 || minAge > 120 || maxAge > 120) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Age fields must be between 0 and 120' 
+      });
+    }
+
+    if (minAge > maxAge) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Minimum age cannot be greater than maximum age' 
+      });
+    }
+
     const scheme = new WelfareScheme({
       title,
       description,
       category,
-      eligibilityCriteria,
+      minAge: parseInt(minAge),
+      maxAge: parseInt(maxAge),
       benefits,
       requiredDocuments: Array.isArray(requiredDocuments) ? requiredDocuments.map(d => ({
         name: d.name,
@@ -248,9 +264,29 @@ async function updateScheme(req, res) {
       });
     }
 
+    // Validate age fields if provided
+    if (updateData.minAge !== undefined || updateData.maxAge !== undefined) {
+      const minAge = updateData.minAge !== undefined ? parseInt(updateData.minAge) : scheme.minAge;
+      const maxAge = updateData.maxAge !== undefined ? parseInt(updateData.maxAge) : scheme.maxAge;
+      
+      if (minAge < 0 || maxAge < 0 || minAge > 120 || maxAge > 120) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Age fields must be between 0 and 120' 
+        });
+      }
+
+      if (minAge > maxAge) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Minimum age cannot be greater than maximum age' 
+        });
+      }
+    }
+
     // Update allowed fields
     const allowedFields = [
-      'title', 'description', 'category', 'eligibilityCriteria', 'benefits',
+      'title', 'description', 'category', 'minAge', 'maxAge', 'benefits',
       'requiredDocuments', 'totalSlots', 'applicationDeadline', 'startDate', 
       'endDate', 'status'
     ];

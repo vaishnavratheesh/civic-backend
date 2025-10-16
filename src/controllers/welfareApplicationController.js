@@ -11,14 +11,11 @@ async function applyForScheme(req, res) {
   try {
     const { schemeId } = req.params;
     const { id: userId } = req.user;
-    let { personalDetails, assessment, reason } = req.body;
+    let { personalDetails } = req.body;
 
     // Parse JSON strings when sent via multipart/form-data
     if (typeof personalDetails === 'string') {
       try { personalDetails = JSON.parse(personalDetails); } catch (_) {}
-    }
-    if (typeof assessment === 'string') {
-      try { assessment = JSON.parse(assessment); } catch (_) {}
     }
 
     // Check if scheme exists and is active
@@ -73,6 +70,20 @@ async function applyForScheme(req, res) {
       });
     }
 
+    // Age validation
+    if (user.dateOfBirth) {
+      const today = new Date();
+      const birthDate = new Date(user.dateOfBirth);
+      const age = Math.floor((today - birthDate) / (365.25 * 24 * 60 * 60 * 1000));
+      
+      if (age < scheme.minAge || age > scheme.maxAge) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Age requirement not met. This scheme is for ages ${scheme.minAge} to ${scheme.maxAge}. Your age: ${age}` 
+        });
+      }
+    }
+
     // Validate and collect uploaded required documents
     let uploadedDocuments = [];
     if (Array.isArray(scheme.requiredDocuments) && scheme.requiredDocuments.length > 0) {
@@ -103,7 +114,7 @@ async function applyForScheme(req, res) {
       }
     }
 
-    // Create application
+    // Create application with new simplified structure
     const application = new WelfareApplication({
       schemeId,
       schemeTitle: scheme.title,
@@ -112,57 +123,35 @@ async function applyForScheme(req, res) {
       userEmail: user.email,
       userWard: user.ward,
       personalDetails: {
+        // Basic Information
         address: personalDetails.address,
         phoneNumber: personalDetails.phoneNumber,
-        rationCardNumber: personalDetails.rationCardNumber,
-        aadharNumber: personalDetails.aadharNumber,
-        familyIncome: parseInt(personalDetails.familyIncome),
-        dependents: parseInt(personalDetails.dependents),
-        isHandicapped: personalDetails.isHandicapped,
-        isSingleWoman: personalDetails.isSingleWoman
+        houseNumber: personalDetails.houseNumber,
+        
+        // Social Information
+        caste: personalDetails.caste,
+        
+        // Membership & Participation
+        isKudumbasreeMember: personalDetails.isKudumbasreeMember || false,
+        paysHarithakarmasenaFee: personalDetails.paysHarithakarmasenaFee || false,
+        
+        // Family Employment & Benefits
+        hasFamilyMemberWithGovtJob: personalDetails.hasFamilyMemberWithGovtJob || false,
+        hasDisabledPersonInHouse: personalDetails.hasDisabledPersonInHouse || false,
+        hasFamilyMemberWithPension: personalDetails.hasFamilyMemberWithPension || false,
+        
+        // Financial Information
+        totalIncome: parseInt(personalDetails.totalIncome) || 0,
+        incomeCategory: personalDetails.incomeCategory,
+        
+        // Land Ownership
+        ownsLand: personalDetails.ownsLand || false,
+        landDetails: personalDetails.landDetails || { villageName: '', surveyNumber: '', area: '' },
+        
+        // Utilities
+        drinkingWaterSource: personalDetails.drinkingWaterSource,
+        hasToilet: personalDetails.hasToilet || false
       },
-      assessment: {
-        familyMembers: parseInt(assessment.familyMembers),
-        childrenCount: parseInt(assessment.childrenCount),
-        elderlyCount: parseInt(assessment.elderlyCount),
-        disabledMembers: parseInt(assessment.disabledMembers),
-        monthlyIncome: parseInt(assessment.monthlyIncome),
-        incomeSource: assessment.incomeSource,
-        hasOtherIncome: assessment.hasOtherIncome,
-        otherIncomeAmount: parseInt(assessment.otherIncomeAmount) || 0,
-        houseOwnership: assessment.houseOwnership,
-        houseType: assessment.houseType,
-        hasElectricity: assessment.hasElectricity,
-        hasWaterConnection: assessment.hasWaterConnection,
-        hasToilet: assessment.hasToilet,
-        educationLevel: assessment.educationLevel,
-        childrenEducation: assessment.childrenEducation,
-        hasHealthInsurance: assessment.hasHealthInsurance,
-        chronicIllness: assessment.chronicIllness,
-        illnessDetails: assessment.illnessDetails,
-        hasDisability: assessment.hasDisability,
-        disabilityType: assessment.disabilityType,
-        employmentStatus: assessment.employmentStatus,
-        jobStability: assessment.jobStability,
-        hasBankAccount: assessment.hasBankAccount,
-        hasVehicle: assessment.hasVehicle,
-        vehicleType: assessment.vehicleType,
-        hasLand: assessment.hasLand,
-        landArea: parseInt(assessment.landArea) || 0,
-        caste: assessment.caste,
-        religion: assessment.religion,
-        isWidow: assessment.isWidow,
-        isOrphan: assessment.isOrphan,
-        isSeniorCitizen: assessment.isSeniorCitizen,
-        hasEmergencyFund: assessment.hasEmergencyFund,
-        emergencyContact: assessment.emergencyContact,
-        emergencyRelation: assessment.emergencyRelation,
-        previousApplications: parseInt(assessment.previousApplications) || 0,
-        previousSchemes: assessment.previousSchemes || [],
-        additionalNeeds: assessment.additionalNeeds,
-        specialCircumstances: assessment.specialCircumstances
-      },
-      reason,
       documents: uploadedDocuments
     });
 
@@ -195,10 +184,20 @@ async function getApplications(req, res) {
     const { id: userId, role } = req.user;
     const { schemeId, status, ward } = req.query;
 
+    console.log('getApplications - userId:', userId, 'role:', role);
+    console.log('getApplications - query params:', { schemeId, status, ward });
+
     let query = {};
 
     // Filter by scheme
-    if (schemeId) query.schemeId = schemeId;
+    if (schemeId) {
+      const mongoose = require('mongoose');
+      if (mongoose.Types.ObjectId.isValid(schemeId)) {
+        query.schemeId = new mongoose.Types.ObjectId(schemeId);
+      } else {
+        query.schemeId = schemeId;
+      }
+    }
     if (status) query.status = status;
 
     let applications;
@@ -224,10 +223,12 @@ async function getApplications(req, res) {
         query.userWard = councillorUser.ward;
       }
       
+      console.log('getApplications - final query:', query);
       applications = await WelfareApplication.find(query)
         .populate('schemeId', 'title scope ward')
         .populate('userId', 'name email')
         .sort({ appliedAt: -1 });
+      console.log('getApplications - found applications:', applications.length);
     } else {
       return res.status(403).json({ 
         success: false, 
@@ -235,9 +236,67 @@ async function getApplications(req, res) {
       });
     }
 
+    // Normalize the applications data similar to getUserApplications
+    const normalizedApplications = applications.map(d => ({
+      _id: d._id,
+      schemeId: ((d.schemeId && d.schemeId._id) ? d.schemeId._id : d.schemeId)?.toString?.() || String(d.schemeId || ''),
+      schemeTitle: d.schemeTitle || (d.schemeId && d.schemeId.title ? d.schemeId.title : ''),
+      userId: (d.userId && d.userId._id) ? d.userId._id : d.userId,
+      userName: d.userName || (d.userId && d.userId.name ? d.userId.name : ''),
+      userEmail: d.userEmail || (d.userId && d.userId.email ? d.userId.email : ''),
+      userWard: typeof d.userWard === 'number' ? d.userWard : Number(d.userWard || 0),
+      personalDetails: {
+        // Basic Information
+        address: d.personalDetails?.address || '',
+        phoneNumber: d.personalDetails?.phoneNumber || '',
+        houseNumber: d.personalDetails?.houseNumber || '',
+        
+        // Social Information
+        caste: d.personalDetails?.caste || '',
+        
+        // Membership & Participation
+        isKudumbasreeMember: Boolean(d.personalDetails?.isKudumbasreeMember || false),
+        paysHarithakarmasenaFee: Boolean(d.personalDetails?.paysHarithakarmasenaFee || false),
+        
+        // Family Employment & Benefits
+        hasFamilyMemberWithGovtJob: Boolean(d.personalDetails?.hasFamilyMemberWithGovtJob || false),
+        hasDisabledPersonInHouse: Boolean(d.personalDetails?.hasDisabledPersonInHouse || false),
+        hasFamilyMemberWithPension: Boolean(d.personalDetails?.hasFamilyMemberWithPension || false),
+        
+        // Financial Information
+        totalIncome: Number(d.personalDetails?.totalIncome || 0),
+        incomeCategory: d.personalDetails?.incomeCategory || '',
+        
+        // Land Ownership
+        ownsLand: Boolean(d.personalDetails?.ownsLand || false),
+        landDetails: d.personalDetails?.landDetails || { villageName: '', surveyNumber: '', area: '' },
+        
+        // Utilities
+        drinkingWaterSource: d.personalDetails?.drinkingWaterSource || '',
+        hasToilet: Boolean(d.personalDetails?.hasToilet || false),
+        
+        // Legacy fields for backward compatibility
+        rationCardNumber: d.personalDetails?.rationCardNumber || '',
+        aadharNumber: d.personalDetails?.aadharNumber || '',
+        familyIncome: Number(d.personalDetails?.familyIncome || d.personalDetails?.totalIncome || 0),
+        dependents: Number(d.personalDetails?.dependents || 0),
+        isHandicapped: Boolean(d.personalDetails?.isHandicapped || d.personalDetails?.hasDisabledPersonInHouse || false),
+        isSingleWoman: Boolean(d.personalDetails?.isSingleWoman || false),
+      },
+      documents: Array.isArray(d.documents) ? d.documents : [],
+      score: typeof d.score === 'number' ? d.score : undefined,
+      justification: d.justification || '',
+      status: d.status || 'pending',
+      verificationStatus: d.verificationStatus || 'Pending',
+      appliedAt: d.appliedAt || d.createdAt || new Date(0),
+      reviewedAt: d.reviewedAt || null,
+      reason: d.reason || ''
+    }));
+
+    console.log('getApplications - returning applications:', normalizedApplications.length);
     res.json({
       success: true,
-      applications
+      applications: normalizedApplications
     });
 
   } catch (error) {
@@ -295,16 +354,43 @@ async function getUserApplications(req, res) {
       userEmail: d.userEmail || '',
       userWard: typeof d.userWard === 'number' ? d.userWard : Number(d.userWard || 0),
       personalDetails: {
+        // Basic Information
         address: d.personalDetails?.address || '',
         phoneNumber: d.personalDetails?.phoneNumber || '',
+        houseNumber: d.personalDetails?.houseNumber || '',
+        
+        // Social Information
+        caste: d.personalDetails?.caste || '',
+        
+        // Membership & Participation
+        isKudumbasreeMember: Boolean(d.personalDetails?.isKudumbasreeMember || false),
+        paysHarithakarmasenaFee: Boolean(d.personalDetails?.paysHarithakarmasenaFee || false),
+        
+        // Family Employment & Benefits
+        hasFamilyMemberWithGovtJob: Boolean(d.personalDetails?.hasFamilyMemberWithGovtJob || false),
+        hasDisabledPersonInHouse: Boolean(d.personalDetails?.hasDisabledPersonInHouse || false),
+        hasFamilyMemberWithPension: Boolean(d.personalDetails?.hasFamilyMemberWithPension || false),
+        
+        // Financial Information
+        totalIncome: Number(d.personalDetails?.totalIncome || 0),
+        incomeCategory: d.personalDetails?.incomeCategory || '',
+        
+        // Land Ownership
+        ownsLand: Boolean(d.personalDetails?.ownsLand || false),
+        landDetails: d.personalDetails?.landDetails || { villageName: '', surveyNumber: '', area: '' },
+        
+        // Utilities
+        drinkingWaterSource: d.personalDetails?.drinkingWaterSource || '',
+        hasToilet: Boolean(d.personalDetails?.hasToilet || false),
+        
+        // Legacy fields for backward compatibility
         rationCardNumber: d.personalDetails?.rationCardNumber || '',
         aadharNumber: d.personalDetails?.aadharNumber || '',
-        familyIncome: Number(d.personalDetails?.familyIncome || 0),
+        familyIncome: Number(d.personalDetails?.familyIncome || d.personalDetails?.totalIncome || 0),
         dependents: Number(d.personalDetails?.dependents || 0),
-        isHandicapped: Boolean(d.personalDetails?.isHandicapped || false),
+        isHandicapped: Boolean(d.personalDetails?.isHandicapped || d.personalDetails?.hasDisabledPersonInHouse || false),
         isSingleWoman: Boolean(d.personalDetails?.isSingleWoman || false),
       },
-      reason: d.reason || '',
       documents: Array.isArray(d.documents) ? d.documents : [],
       score: typeof d.score === 'number' ? d.score : undefined,
       justification: d.justification || '',

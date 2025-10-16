@@ -27,6 +27,7 @@ router.put('/councillors/profile', auth, councillorController.updateProfile);
 router.get('/councillors/ward/citizens', auth, requireRole('councillor'), councillorVerification.listWardCitizens);
 router.post('/councillors/ward/citizens/:id/verify', auth, requireRole('councillor'), councillorVerification.verifyCitizen);
 router.delete('/councillors/ward/citizens/:id', auth, requireRole('councillor'), upload.single('deathCertificate'), councillorVerification.removeCitizen);
+router.get('/councillors/ward/past-members', auth, requireRole('councillor'), councillorVerification.listPastMembers);
 
 // Councillors can post announcements for citizens only
 router.post('/councillors/announcements', auth, requireRole('councillor'), async (req, res) => {

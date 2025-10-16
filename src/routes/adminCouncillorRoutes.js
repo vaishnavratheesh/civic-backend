@@ -10,7 +10,10 @@ const {
   removePresident,
   resendCredentials,
   getAuditLogs,
-  testCollections
+  testCollections,
+  getUsers,
+  removeUser,
+  toggleUserVerification
 } = require('../controllers/adminCouncillorController');
 
 // All routes require admin role
@@ -32,7 +35,35 @@ router.post('/send-credentials', resendCredentials);
 // Audit logs
 router.get('/audit-logs', getAuditLogs);
 
+// User management routes
+router.get('/users', getUsers);
+router.delete('/users/:userId', removeUser);
+router.patch('/users/:userId/toggle-verification', toggleUserVerification);
+
+// Test route to verify the endpoint exists
+router.get('/test-route', (req, res) => {
+  res.json({ success: true, message: 'Admin routes are working', timestamp: new Date() });
+});
+
 // Test endpoint (remove in production) - no auth required for testing
 router.get('/test-collections', testCollections);
+
+// Test admin user endpoint
+router.get('/test-admin', async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const adminUsers = await User.find({ role: 'admin' }).select('name email role active isVerified approved');
+    res.json({
+      success: true,
+      adminUsers,
+      count: adminUsers.length
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 module.exports = router;

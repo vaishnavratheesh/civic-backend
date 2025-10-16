@@ -4,7 +4,8 @@ const welfareSchemeSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, required: true },
   category: { type: String, required: true }, // e.g., 'Education', 'Healthcare', 'Housing', 'Employment'
-  eligibilityCriteria: { type: String, required: true },
+  minAge: { type: Number, required: true, min: 0, max: 120 },
+  maxAge: { type: Number, required: true, min: 0, max: 120 },
   benefits: { type: String, required: true },
   requiredDocuments: [{
     name: {

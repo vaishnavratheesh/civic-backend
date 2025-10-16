@@ -19,10 +19,10 @@ const app = express();
 
 // CORS
 app.use(cors({
-  origin: config.CORS_ORIGINS,
+  origin: config.isDevelopment ? true : config.CORS_ORIGINS, // Allow all origins in development
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
 
 // JSON
@@ -43,6 +43,7 @@ require('./models/Grievance');
 require('./models/Announcement');
 require('./models/Event');
 require('./models/Message');
+require('./models/PastMember');
 
 // MongoDB
 mongoose.connect(config.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })

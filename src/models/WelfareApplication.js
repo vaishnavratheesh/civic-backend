@@ -11,118 +11,57 @@ const welfareApplicationSchema = new mongoose.Schema({
   userEmail: { type: String, required: true },
   userWard: { type: Number, required: true },
   
-  // Application details
+  // Application details - New simplified structure
   personalDetails: {
+    // Basic Information
     address: { type: String, required: true },
     phoneNumber: { type: String, required: true },
-    rationCardNumber: { type: String, required: false },
-    aadharNumber: { type: String, required: false },
-    familyIncome: { type: Number, required: true },
-    dependents: { type: Number, required: true },
-    isHandicapped: { type: Boolean, default: false },
-    isSingleWoman: { type: Boolean, default: false }
-  },
-
-  // Detailed Assessment Questions for ML Analysis
-  assessment: {
-    // Family Information
-    familyMembers: { type: Number, required: true },
-    childrenCount: { type: Number, required: true },
-    elderlyCount: { type: Number, required: true },
-    disabledMembers: { type: Number, required: true },
+    houseNumber: { type: String, required: true },
     
-    // Income Details
-    monthlyIncome: { type: Number, required: true },
-    incomeSource: { 
-      type: String, 
-      enum: ['salary', 'business', 'agriculture', 'daily_wage', 'pension', 'other'],
-      required: true 
-    },
-    hasOtherIncome: { type: Boolean, default: false },
-    otherIncomeAmount: { type: Number, default: 0 },
-    
-    // Housing Information
-    houseOwnership: { 
-      type: String, 
-      enum: ['owned', 'rented', 'government', 'other'],
-      required: true 
-    },
-    houseType: { 
-      type: String, 
-      enum: ['concrete', 'semi_concrete', 'thatched', 'temporary'],
-      required: true 
-    },
-    hasElectricity: { type: Boolean, default: false },
-    hasWaterConnection: { type: Boolean, default: false },
-    hasToilet: { type: Boolean, default: false },
-    
-    // Education
-    educationLevel: { 
-      type: String, 
-      enum: ['illiterate', 'primary', 'secondary', 'higher_secondary', 'graduate', 'post_graduate'],
-      required: true 
-    },
-    childrenEducation: { 
-      type: String, 
-      enum: ['not_applicable', 'government', 'private', 'not_attending'],
-      required: true 
-    },
-    
-    // Health
-    hasHealthInsurance: { type: Boolean, default: false },
-    chronicIllness: { type: Boolean, default: false },
-    illnessDetails: { type: String, required: false },
-    hasDisability: { type: Boolean, default: false },
-    disabilityType: { type: String, required: false },
-    
-    // Employment
-    employmentStatus: { 
-      type: String, 
-      enum: ['employed', 'unemployed', 'self_employed', 'student', 'retired', 'homemaker'],
-      required: true 
-    },
-    jobStability: { 
-      type: String, 
-      enum: ['permanent', 'temporary', 'contract', 'daily_wage', 'not_applicable'],
-      required: true 
-    },
-    
-    // Assets
-    hasBankAccount: { type: Boolean, default: false },
-    hasVehicle: { type: Boolean, default: false },
-    vehicleType: { type: String, required: false },
-    hasLand: { type: Boolean, default: false },
-    landArea: { type: Number, default: 0 },
-    
-    // Social Status
+    // Social Information
     caste: { 
       type: String, 
-      enum: ['general', 'obc', 'sc', 'st', 'other'],
+      enum: ['general', 'sc', 'st'],
       required: true 
     },
-    religion: { 
+    
+    // Membership & Participation
+    isKudumbasreeMember: { type: Boolean, default: false },
+    paysHarithakarmasenaFee: { type: Boolean, default: false },
+    
+    // Family Employment & Benefits
+    hasFamilyMemberWithGovtJob: { type: Boolean, default: false },
+    hasDisabledPersonInHouse: { type: Boolean, default: false },
+    hasFamilyMemberWithPension: { type: Boolean, default: false },
+    
+    // Financial Information
+    totalIncome: { type: Number, required: true },
+    incomeCategory: { 
       type: String, 
-      enum: ['hindu', 'muslim', 'christian', 'sikh', 'buddhist', 'jain', 'other'],
+      enum: ['apl', 'bpl'],
       required: true 
     },
-    isWidow: { type: Boolean, default: false },
-    isOrphan: { type: Boolean, default: false },
-    isSeniorCitizen: { type: Boolean, default: false },
     
-    // Emergency Information
-    hasEmergencyFund: { type: Boolean, default: false },
-    emergencyContact: { type: String, required: true },
-    emergencyRelation: { type: String, required: true },
+    // Land Ownership
+    ownsLand: { type: Boolean, default: false },
+    landDetails: {
+      villageName: { type: String, required: false },
+      surveyNumber: { type: String, required: false },
+      area: { type: String, required: false }
+    },
     
-    // Additional Information
-    previousApplications: { type: Number, default: 0 },
-    previousSchemes: [String],
-    additionalNeeds: { type: String, required: false },
-    specialCircumstances: { type: String, required: false }
+    // Utilities
+    drinkingWaterSource: { 
+      type: String, 
+      enum: ['own_well', 'public_well', 'tap', 'public_tap'],
+      required: true 
+    },
+    hasToilet: { type: Boolean, default: false }
   },
+
+
   
   // Application content
-  reason: { type: String, required: true },
   supportingDocuments: [String], // URLs to uploaded documents
   
   // New: store named document URLs as per scheme requirements

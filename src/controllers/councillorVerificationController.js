@@ -71,8 +71,8 @@ async function removeCitizen(req, res) {
     const { id } = req.params;
     const { removalReason, removalComments } = req.body;
     
-    // Get death certificate file if provided
-    const deathCertificateFile = req.files && req.files.deathCertificate && req.files.deathCertificate[0];
+    // Get death certificate file if provided (using single file upload)
+    const deathCertificateFile = req.file;
     
     const user = await User.findById(id);
     if (!user || user.role !== 'citizen') {
@@ -100,10 +100,10 @@ async function removeCitizen(req, res) {
       originalUserId: user._id,
       name: user.name,
       email: user.email,
-      phone: user.phone,
+      phone: user.contactNumber || user.phone,
       address: user.address,
-      ward: user.ward,
-      panchayath: user.panchayath,
+      ward: user.ward.toString(),
+      panchayath: user.panchayath || 'Erumeli Panchayath',
       removalReason,
       deathCertificateUrl,
       removalComments,
@@ -131,9 +131,28 @@ async function removeCitizen(req, res) {
   }
 }
 
+// List past members (removed citizens) from councillor's ward
+async function listPastMembers(req, res) {
+  try {
+    const ward = req.user.ward;
+    const pastMembers = await PastMember.find({ ward: ward.toString() })
+      .sort({ removedAt: -1 })
+      .lean();
+    
+    res.json({
+      pastMembers,
+      total: pastMembers.length
+    });
+  } catch (err) {
+    console.error('listPastMembers error:', err);
+    res.status(500).json({ error: 'Failed to fetch past members' });
+  }
+}
+
 module.exports = {
   listWardCitizens,
   verifyCitizen,
-  removeCitizen
+  removeCitizen,
+  listPastMembers
 };
 
