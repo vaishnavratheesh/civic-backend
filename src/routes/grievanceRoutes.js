@@ -42,6 +42,12 @@ router.get('/grievances/stats', auth, grievanceController.getGrievanceStats);
 // Community upvote grievance
 router.post('/grievances/:id/upvote', auth, grievanceController.upvoteGrievance);
 
+// Video proof request endpoints
+router.post('/grievances/:id/request-video-proof', auth, grievanceController.requestVideoProof);
+router.post('/grievances/:id/upload-video-proof', auth, upload.single('video'), grievanceController.uploadVideoProof);
+router.get('/grievances/video-proof-requests/my', auth, grievanceController.getMyVideoProofRequests);
+router.get('/grievances/:grievanceId/test-video-requests', auth, grievanceController.testVideoProofRequests);
+
 // TODO: Right to delete (policy-driven)
 // router.delete('/grievances/:id', auth, grievanceController.deleteGrievance)
 

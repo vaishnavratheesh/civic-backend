@@ -454,7 +454,8 @@ const getMyGrievances = async (req, res) => {
       officerName: grievance.assignedTo?.name || grievance.officerName || null,
       source: grievance.source,
       createdAt: grievance.createdAt,
-      resolvedAt: grievance.resolvedAt
+      resolvedAt: grievance.resolvedAt,
+      videoProofRequests: grievance.videoProofRequests || []
     }));
 
     res.json({ grievances: mappedGrievances });
@@ -496,7 +497,8 @@ const getCommunityGrievances = async (req, res) => {
       officerName: grievance.assignedTo?.name || grievance.officerName || null,
       source: grievance.source,
       createdAt: grievance.createdAt,
-      resolvedAt: grievance.resolvedAt
+      resolvedAt: grievance.resolvedAt,
+      videoProofRequests: grievance.videoProofRequests || []
     }));
 
     res.json({ grievances: mappedGrievances });
@@ -960,6 +962,273 @@ const upvoteGrievance = async (req, res) => {
   }
 };
 
+// Request video proof from citizen
+const requestVideoProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const requesterId = req.user.id;
+    const requesterName = req.user.name;
+
+    // Check if user has permission (councillor or admin)
+    if (!['councillor', 'admin', 'COUNCILLOR', 'ADMIN'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Only councillors and admins can request video proof' });
+    }
+
+    const grievance = await Grievance.findById(id);
+    if (!grievance) {
+      return res.status(404).json({ message: 'Grievance not found' });
+    }
+
+    // Check if there's already a pending request from this user
+    const existingRequest = grievance.videoProofRequests?.find(
+      req => req.requestedBy.toString() === requesterId.toString() && req.status === 'pending'
+    );
+
+    if (existingRequest) {
+      return res.status(400).json({ message: 'You already have a pending video proof request for this grievance' });
+    }
+
+    // Add video proof request
+    const mongoose = require('mongoose');
+    const videoProofRequest = {
+      _id: new mongoose.Types.ObjectId(),
+      requestedBy: requesterId,
+      requestedByName: requesterName,
+      requestedAt: new Date(),
+      message: message || 'Please provide additional video evidence for this complaint.',
+      status: 'pending'
+    };
+
+    console.log('Creating video proof request:', videoProofRequest);
+    
+    const updateResult = await Grievance.findByIdAndUpdate(id, {
+      $push: { 
+        videoProofRequests: videoProofRequest,
+        actionHistory: {
+          action: 'video_proof_requested',
+          by: requesterId,
+          at: new Date(),
+          remarks: `Video proof requested: ${message || 'Additional evidence needed'}`
+        }
+      }
+    }, { new: true });
+
+    console.log('Update result:', updateResult ? 'Success' : 'Failed');
+    console.log('Updated video requests:', updateResult?.videoProofRequests);
+
+    res.json({
+      success: true,
+      message: 'Video proof request sent to citizen successfully',
+      requestId: videoProofRequest._id.toString()
+    });
+  } catch (error) {
+    console.error('Error requesting video proof:', error);
+    res.status(500).json({ message: 'Error requesting video proof', error: error.message });
+  }
+};
+
+// Upload video proof by citizen
+const uploadVideoProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { requestId } = req.body;
+    const userId = req.user.id;
+
+    const grievance = await Grievance.findById(id);
+    if (!grievance) {
+      return res.status(404).json({ message: 'Grievance not found' });
+    }
+
+    // Check if user is the original complainant
+    if (grievance.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Only the original complainant can upload video proof' });
+    }
+
+    console.log('=== VIDEO UPLOAD DEBUG ===');
+    console.log('Grievance ID:', id);
+    console.log('Request ID:', requestId);
+    console.log('User ID:', userId);
+    console.log('Grievance found:', !!grievance);
+    console.log('Video requests array:', grievance.videoProofRequests);
+    console.log('Video requests length:', grievance.videoProofRequests?.length || 0);
+
+    // Check if videoProofRequests exists and has items
+    if (!grievance.videoProofRequests || grievance.videoProofRequests.length === 0) {
+      console.log('No video proof requests found for this grievance');
+      return res.status(404).json({ 
+        message: 'No video proof requests found for this grievance',
+        debug: {
+          grievanceId: id,
+          hasVideoRequests: !!grievance.videoProofRequests,
+          requestCount: grievance.videoProofRequests?.length || 0
+        }
+      });
+    }
+
+    // Find the specific video proof request
+    let requestIndex = -1;
+    for (let i = 0; i < grievance.videoProofRequests.length; i++) {
+      const req = grievance.videoProofRequests[i];
+      console.log(`Request ${i}:`, {
+        id: req._id?.toString(),
+        status: req.status,
+        requestedBy: req.requestedBy?.toString(),
+        requestedByName: req.requestedByName
+      });
+      
+      if (req._id?.toString() === requestId && req.status === 'pending') {
+        requestIndex = i;
+        console.log('Found matching request at index:', i);
+        break;
+      }
+    }
+
+    if (requestIndex === -1) {
+      console.log('Request not found or not pending');
+      return res.status(404).json({ 
+        message: 'Video proof request not found or already completed',
+        debug: {
+          requestId,
+          availableRequests: grievance.videoProofRequests.map(r => ({ 
+            id: r._id?.toString(), 
+            status: r.status,
+            requestedBy: r.requestedByName 
+          }))
+        }
+      });
+    }
+
+    // Handle video upload
+    let videoUrl = null;
+    if (req.file) {
+      try {
+        console.log('Processing video file:', req.file.originalname, 'Size:', req.file.size, 'Type:', req.file.mimetype);
+        const { uploadVideo } = require('../utils/cloudinary');
+        console.log('Starting Cloudinary upload...');
+        videoUrl = await uploadVideo(req.file.path);
+        console.log('Cloudinary upload successful:', videoUrl);
+        
+        // Clean up uploaded file
+        const fs = require('fs');
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+      } catch (uploadError) {
+        console.error('Video upload failed:', uploadError);
+        console.error('Upload error stack:', uploadError.stack);
+        return res.status(500).json({ 
+          message: 'Failed to upload video', 
+          error: uploadError.message,
+          details: uploadError.stack 
+        });
+      }
+    } else {
+      console.log('No file received in request');
+      return res.status(400).json({ message: 'No video file provided' });
+    }
+
+    // Update the specific request
+    const updateQuery = {};
+    updateQuery[`videoProofRequests.${requestIndex}.status`] = 'uploaded';
+    updateQuery[`videoProofRequests.${requestIndex}.videoUrl`] = videoUrl;
+    updateQuery[`videoProofRequests.${requestIndex}.uploadedAt`] = new Date();
+
+    await Grievance.findByIdAndUpdate(id, {
+      $set: updateQuery,
+      $push: {
+        actionHistory: {
+          action: 'video_proof_uploaded',
+          by: userId,
+          at: new Date(),
+          remarks: 'Video proof uploaded by citizen'
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Video proof uploaded successfully',
+      videoUrl
+    });
+  } catch (error) {
+    console.error('Error uploading video proof:', error);
+    res.status(500).json({ message: 'Error uploading video proof', error: error.message });
+  }
+};
+
+// Test endpoint to check video proof requests
+const testVideoProofRequests = async (req, res) => {
+  try {
+    const { grievanceId } = req.params;
+    const grievance = await Grievance.findById(grievanceId);
+    
+    if (!grievance) {
+      return res.status(404).json({ message: 'Grievance not found' });
+    }
+
+    console.log('Test endpoint - Grievance:', grievanceId);
+    console.log('Video requests:', grievance.videoProofRequests);
+
+    res.json({
+      success: true,
+      grievanceId: grievance._id,
+      videoProofRequests: grievance.videoProofRequests || [],
+      requestCount: (grievance.videoProofRequests || []).length,
+      grievanceData: {
+        userId: grievance.userId,
+        userName: grievance.userName,
+        issueType: grievance.issueType,
+        description: grievance.description
+      }
+    });
+  } catch (error) {
+    console.error('Error testing video proof requests:', error);
+    res.status(500).json({ message: 'Error testing video proof requests', error: error.message });
+  }
+};
+
+// Get video proof requests for current user (citizen)
+const getMyVideoProofRequests = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find all grievances where this user is the complainant and has video proof requests
+    const grievances = await Grievance.find({
+      userId: userId,
+      'videoProofRequests.0': { $exists: true }
+    }).select('_id issueType description videoProofRequests createdAt').lean();
+
+    const requests = [];
+    for (const grievance of grievances) {
+      for (const request of grievance.videoProofRequests || []) {
+        requests.push({
+          id: request._id,
+          grievanceId: grievance._id,
+          grievanceIssueType: grievance.issueType,
+          grievanceDescription: grievance.description,
+          requestedBy: request.requestedByName,
+          requestedAt: request.requestedAt,
+          message: request.message,
+          status: request.status,
+          videoUrl: request.videoUrl,
+          uploadedAt: request.uploadedAt,
+          rejectionReason: request.rejectionReason
+        });
+      }
+    }
+
+    // Sort by most recent first
+    requests.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+
+    res.json({
+      success: true,
+      requests
+    });
+  } catch (error) {
+    console.error('Error fetching video proof requests:', error);
+    res.status(500).json({ message: 'Error fetching video proof requests', error: error.message });
+  }
+};
+
 module.exports = {
   createGrievance,
   checkDuplicateQuick,
@@ -973,7 +1242,11 @@ module.exports = {
   autoVerifyGrievance,
   assignGrievance,
   getGrievancesForReview,
-  upvoteGrievance
+  upvoteGrievance,
+  requestVideoProof,
+  uploadVideoProof,
+  getMyVideoProofRequests,
+  testVideoProofRequests
 };
 
 

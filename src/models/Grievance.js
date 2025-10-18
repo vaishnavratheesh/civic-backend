@@ -148,6 +148,21 @@ const grievanceSchema = new mongoose.Schema({
     ip: { type: String },
     device: { type: String }
   },
+  // Video proof requests
+  videoProofRequests: [{
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    requestedByName: { type: String, required: true },
+    requestedAt: { type: Date, default: Date.now },
+    message: { type: String, default: 'Please provide additional video evidence for this complaint.' },
+    status: { 
+      type: String, 
+      enum: ['pending', 'uploaded', 'rejected'], 
+      default: 'pending' 
+    },
+    videoUrl: { type: String, default: null },
+    uploadedAt: { type: Date, default: null },
+    rejectionReason: { type: String, default: null }
+  }],
   // Action history audit
   actionHistory: [{
     action: { type: String },
