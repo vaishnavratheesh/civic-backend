@@ -1,4 +1,11 @@
 const config = require('./config/config');
+try {
+  const express = require('express');
+  console.log('Express loaded successfully');
+} catch (error) {
+  console.error('Failed to load Express:', error);
+  process.exit(1);
+}
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -94,22 +101,22 @@ app.get('/api/test-collections', async (req, res) => {
   try {
     const CouncillorProfile = require('./models/CouncillorProfile');
     const PresidentProfile = require('./models/PresidentProfile');
-    
+
     console.log('Testing database collections...');
-    
+
     // Check councillorProfiles collection
     const councillorCount = await CouncillorProfile.countDocuments();
     const councillors = await CouncillorProfile.find().select('name email ward');
-    
+
     // Check presidentProfiles collection
     const presidentCount = await PresidentProfile.countDocuments();
     const presidents = await PresidentProfile.find().select('name email');
-    
+
     console.log(`CouncillorProfile collection: ${councillorCount} documents`);
     console.log('Councillors:', councillors);
     console.log(`PresidentProfile collection: ${presidentCount} documents`);
     console.log('Presidents:', presidents);
-    
+
     res.json({
       success: true,
       data: {
@@ -140,9 +147,9 @@ app.get('/api/test-email-config', (req, res) => {
     EMAIL_PASS: process.env.EMAIL_PASS ? 'Set (hidden)' : 'Not set',
     EMAIL_FROM: process.env.EMAIL_FROM || 'Not set'
   };
-  
+
   console.log('Email configuration:', emailConfig);
-  
+
   res.json({
     success: true,
     config: emailConfig,
@@ -156,16 +163,16 @@ app.post('/api/test-send-email', async (req, res) => {
     const { sendOTPEmail, sendPasswordResetEmail } = require('./utils/email');
     const testEmail = req.body.email || 'test@example.com';
     const testType = req.body.type || 'otp';
-    
+
     console.log('Testing email send to:', testEmail, 'Type:', testType);
-    
+
     let result;
     if (testType === 'otp') {
       result = await sendOTPEmail(testEmail, '123456', 'Test User');
     } else if (testType === 'reset') {
       result = await sendPasswordResetEmail(testEmail, 'http://localhost:3000/reset-password?token=test123');
     }
-    
+
     res.json({
       success: true,
       emailSent: result,
