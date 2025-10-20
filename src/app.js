@@ -21,6 +21,7 @@ const grievanceRoutes = require('./routes/grievanceRoutes');
 const presidentRoutes = require('./routes/presidentRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
 const chatbotRoutes = require('./routes/chatbotRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 
 const app = express();
 
@@ -90,6 +91,7 @@ app.use('/api', grievanceRoutes);
 app.use('/api', presidentRoutes);
 app.use('/api', meetingRoutes);
 app.use('/api', chatbotRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Test endpoint
 app.get('/api/test', (req, res) => {
@@ -160,8 +162,8 @@ app.get('/api/test-email-config', (req, res) => {
 // Test actual email sending
 app.post('/api/test-send-email', async (req, res) => {
   try {
-    const { sendOTPEmail, sendPasswordResetEmail } = require('./utils/email');
-    const testEmail = req.body.email || 'test@example.com';
+    const { sendOTPEmail, sendPasswordResetEmail, sendEmail } = require('./utils/email');
+    const testEmail = req.body.email || 'vaishnavratheesh27@gmail.com';
     const testType = req.body.type || 'otp';
 
     console.log('Testing email send to:', testEmail, 'Type:', testType);
@@ -171,13 +173,16 @@ app.post('/api/test-send-email', async (req, res) => {
       result = await sendOTPEmail(testEmail, '123456', 'Test User');
     } else if (testType === 'reset') {
       result = await sendPasswordResetEmail(testEmail, 'http://localhost:3000/reset-password?token=test123');
+    } else if (testType === 'simple') {
+      result = await sendEmail(testEmail, 'Test Email', '<h1>Test</h1><p>This is a test email from Civic+.</p>');
     }
 
     res.json({
-      success: true,
+      success: result,
       emailSent: result,
-      message: 'Email test completed',
-      type: testType
+      message: result ? 'Email sent successfully' : 'Email sending failed',
+      type: testType,
+      email: testEmail
     });
   } catch (error) {
     console.error('Email test error:', error);

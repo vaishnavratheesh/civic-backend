@@ -7,8 +7,7 @@ const PresidentProfile = require('../models/PresidentProfile');
 const OTP = require('../models/OTP');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const PastMember = require('../models/PastMember');
-const emailUtils = require('../utils/email');
-const { sendOTPEmail, sendPasswordResetEmail } = emailUtils.default || emailUtils;
+const { sendOTPEmail, sendPasswordResetEmail } = require('../utils/email');
 const generateOTP = require('../utils/generateOTP');
 
 const config = require('../config/config');

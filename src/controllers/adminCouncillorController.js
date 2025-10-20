@@ -2,8 +2,7 @@ const bcrypt = require('bcryptjs');
 const CouncillorProfile = require('../models/CouncillorProfile');
 const PresidentProfile = require('../models/PresidentProfile');
 const User = require('../models/User');
-const emailUtils = require('../utils/email');
-const { sendEmail } = emailUtils.default || emailUtils;
+const { sendEmail } = require('../utils/email');
 const { 
   getCouncillorCredentialsTemplate, 
   getPresidentCredentialsTemplate,
