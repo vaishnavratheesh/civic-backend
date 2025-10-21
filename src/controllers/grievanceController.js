@@ -1229,6 +1229,58 @@ const getMyVideoProofRequests = async (req, res) => {
   }
 };
 
+// Fix misclassified complaints (admin only)
+const fixComplaintClassifications = async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin only.' });
+    }
+
+    const grievances = await Grievance.find({});
+    let updatedCount = 0;
+
+    for (const doc of grievances) {
+      let newIssueType = doc.issueType;
+      const desc = (doc.description || '').toLowerCase();
+      const title = (doc.title || '').toLowerCase();
+      const combined = desc + ' ' + title;
+      
+      // Classify based on keywords
+      if (combined.includes('garbage') || combined.includes('waste') || combined.includes('trash') || combined.includes('rubbish')) {
+        newIssueType = 'Waste Management';
+      } else if (combined.includes('road') || combined.includes('pothole') || combined.includes('street') || combined.includes('path')) {
+        newIssueType = 'Road Repair';
+      } else if (combined.includes('light') || combined.includes('lamp') || combined.includes('bulb') || combined.includes('dark')) {
+        newIssueType = 'Streetlight Outage';
+      } else if (combined.includes('drain') || combined.includes('flood') || combined.includes('water logging') || combined.includes('overflow')) {
+        newIssueType = 'Drainage';
+      } else if (combined.includes('noise') || combined.includes('nuisance') || combined.includes('disturbance')) {
+        newIssueType = 'Public Nuisance';
+      } else if (combined.includes('water') || combined.includes('leak') || combined.includes('pipe') || combined.includes('tap')) {
+        newIssueType = 'Water Leakage';
+      }
+      
+      if (newIssueType !== doc.issueType) {
+        await Grievance.updateOne(
+          { _id: doc._id },
+          { $set: { issueType: newIssueType } }
+        );
+        console.log(`Updated complaint ${doc._id} from ${doc.issueType} to ${newIssueType}`);
+        updatedCount++;
+      }
+    }
+
+    res.json({ 
+      message: `Classification fix completed. Updated ${updatedCount} complaints.`,
+      updatedCount 
+    });
+  } catch (error) {
+    console.error('Error fixing classifications:', error);
+    res.status(500).json({ message: 'Error fixing classifications', error: error.message });
+  }
+};
+
 module.exports = {
   createGrievance,
   checkDuplicateQuick,
@@ -1246,7 +1298,8 @@ module.exports = {
   requestVideoProof,
   uploadVideoProof,
   getMyVideoProofRequests,
-  testVideoProofRequests
+  testVideoProofRequests,
+  fixComplaintClassifications
 };
 
 

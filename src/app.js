@@ -1,4 +1,4 @@
-const config = require('./config/config');
+const config = require('./config/environment');
 try {
   const express = require('express');
   console.log('Express loaded successfully');
@@ -25,13 +25,18 @@ const aiRoutes = require('./routes/aiRoutes');
 
 const app = express();
 
-// CORS
+// CORS Configuration - Environment aware
 app.use(cors({
-  origin: config.isDevelopment ? true : config.CORS_ORIGINS, // Allow all origins in development
+  origin: config.isDevelopment ? true : config.corsOrigins, // Allow all origins in development
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
+
+// Log environment info
+console.log(`🚀 Running in ${config.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'} mode`);
+console.log(`📡 Frontend URL: ${config.frontendUrl}`);
+console.log(`🌐 CORS Origins: ${config.corsOrigins.join(', ')}`);
 
 // JSON
 app.use(express.json());
@@ -54,7 +59,7 @@ require('./models/Message');
 require('./models/PastMember');
 
 // MongoDB
-mongoose.connect(config.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(config.mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(async () => {
     console.log('MongoDB connected');
     // Seed default PresidentProfile if not present

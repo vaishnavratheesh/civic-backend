@@ -48,6 +48,9 @@ router.post('/grievances/:id/upload-video-proof', auth, upload.single('video'), 
 router.get('/grievances/video-proof-requests/my', auth, grievanceController.getMyVideoProofRequests);
 router.get('/grievances/:grievanceId/test-video-requests', auth, grievanceController.testVideoProofRequests);
 
+// Data migration endpoint to fix misclassified complaints (admin only)
+router.post('/grievances/fix-classifications', auth, grievanceController.fixComplaintClassifications);
+
 // TODO: Right to delete (policy-driven)
 // router.delete('/grievances/:id', auth, grievanceController.deleteGrievance)
 
