@@ -19,7 +19,12 @@ async function getTransporter() {
   const emailUser = process.env.EMAIL_USER;
   const emailPass = process.env.EMAIL_PASS;
   
+  console.log('📧 Configuring NodeMailer transporter...');
+  console.log('📧 EMAIL_USER:', emailUser ? 'SET' : 'NOT SET');
+  console.log('📧 EMAIL_PASS:', emailPass ? 'SET' : 'NOT SET');
+  
   if (!emailUser || !emailPass) {
+    console.error('❌ Email credentials not configured properly');
     throw new Error('Email credentials not configured properly');
   }
   
@@ -37,9 +42,9 @@ async function getTransporter() {
   // Verify the transporter
   try {
     await transporter.verify();
-    console.log('Email transporter verified successfully');
+    console.log('✅ Email transporter verified successfully');
   } catch (error) {
-    console.error('Email transporter verification failed:', error);
+    console.error('❌ Email transporter verification failed:', error.message);
     throw error;
   }
   
@@ -49,20 +54,21 @@ async function getTransporter() {
 // SendGrid email sending function
 async function sendEmailWithSendGrid(to, subject, html, text = null) {
   try {
+    console.log('📧 SendGrid: Attempting to send email...');
     configureSendGrid();
     
     if (!process.env.SENDGRID_API_KEY) {
-      console.error('SendGrid API key not found in environment variables');
+      console.error('❌ SendGrid: API key not found in environment variables');
       throw new Error('SendGrid not configured - SENDGRID_API_KEY missing');
     }
     
     if (!sendGridConfigured) {
-      console.error('SendGrid configuration failed');
+      console.error('❌ SendGrid: Configuration failed');
       throw new Error('SendGrid configuration failed');
     }
     
     const emailFrom = process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER;
-    console.log(`SendGrid: Sending email from ${emailFrom} to ${to}`);
+    console.log(`📧 SendGrid: Sending from ${emailFrom} to ${to}`);
     
     const msg = {
       to,
@@ -90,17 +96,17 @@ async function sendEmailWithSendGrid(to, subject, html, text = null) {
     };
     
     const result = await sgMail.send(msg);
-    console.log('Email sent successfully via SendGrid:', result[0].statusCode);
-    console.log('SendGrid Message ID:', result[0].headers['x-message-id']);
+    console.log('✅ SendGrid: Email sent successfully! Status:', result[0].statusCode);
+    console.log('✅ SendGrid: Message ID:', result[0].headers['x-message-id']);
     return true;
   } catch (error) {
-    console.error('Error sending email via SendGrid:');
-    console.error('Error Code:', error.code);
-    console.error('Error Message:', error.message);
+    console.error('❌ SendGrid: Error sending email');
+    console.error('❌ SendGrid: Error Code:', error.code);
+    console.error('❌ SendGrid: Error Message:', error.message);
     
     if (error.response) {
-      console.error('SendGrid Response Status:', error.response.status);
-      console.error('SendGrid Response Body:', JSON.stringify(error.response.body, null, 2));
+      console.error('❌ SendGrid: Response Status:', error.response.status);
+      console.error('❌ SendGrid: Response Body:', JSON.stringify(error.response.body, null, 2));
     }
     
     return false;
@@ -110,9 +116,16 @@ async function sendEmailWithSendGrid(to, subject, html, text = null) {
 // NodeMailer email sending function
 async function sendEmailWithNodeMailer(to, subject, html, text = null) {
   try {
+    console.log('📧 NodeMailer: Attempting to send email...');
+    console.log('📧 NodeMailer: To:', to);
+    console.log('📧 NodeMailer: Subject:', subject);
+    
     const emailTransporter = await getTransporter();
+    console.log('📧 NodeMailer: Transporter ready');
     
     const emailFrom = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+    console.log('📧 NodeMailer: From:', emailFrom);
+    
     const mailOptions = {
       from: {
         name: 'Civic+ Platform',
@@ -131,60 +144,57 @@ async function sendEmailWithNodeMailer(to, subject, html, text = null) {
     };
 
     const result = await emailTransporter.sendMail(mailOptions);
-    console.log('Email sent successfully via NodeMailer:', result.messageId);
+    console.log('✅ NodeMailer: Email sent successfully! Message ID:', result.messageId);
     return true;
   } catch (error) {
-    console.error('Error sending email via NodeMailer:', error);
+    console.error('❌ NodeMailer: Error sending email:', error.message);
+    console.error('❌ NodeMailer: Error code:', error.code);
+    if (error.response) {
+      console.error('❌ NodeMailer: Response:', error.response);
+    }
     return false;
   }
 }
 
 // Main email sending function with fallback
 async function sendEmailWithFallback(to, subject, html, text = null) {
-  console.log(`Attempting to send email to: ${to}, subject: ${subject}`);
+  console.log(`\n📧 ========================================`);
+  console.log(`📧 EMAIL SEND REQUEST`);
+  console.log(`📧 To: ${to}`);
+  console.log(`📧 Subject: ${subject}`);
+  console.log(`📧 ========================================\n`);
   
-  // In production, try NodeMailer first since SendGrid sender isn't verified
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Production mode: Trying NodeMailer first...');
-    const nodeMailerSuccess = await sendEmailWithNodeMailer(to, subject, html, text);
-    
-    if (nodeMailerSuccess) {
-      console.log('Email sent successfully via NodeMailer');
-      return true;
-    }
-    
-    console.log('NodeMailer failed, trying SendGrid fallback...');
-    const sendGridSuccess = await sendEmailWithSendGrid(to, subject, html, text);
-    
-    if (sendGridSuccess) {
-      console.log('Email sent successfully via SendGrid fallback');
-      return true;
-    }
-  } else {
-    // In development, try SendGrid first
-    console.log('Development mode: Trying SendGrid first...');
-    const sendGridSuccess = await sendEmailWithSendGrid(to, subject, html, text);
-    
-    if (sendGridSuccess) {
-      console.log('Email sent successfully via SendGrid');
-      return true;
-    }
-    
-    console.log('SendGrid failed, trying NodeMailer fallback...');
-    const nodeMailerSuccess = await sendEmailWithNodeMailer(to, subject, html, text);
-    
-    if (nodeMailerSuccess) {
-      console.log('Email sent successfully via NodeMailer fallback');
-      return true;
-    }
+  // ALWAYS try NodeMailer first (Gmail) as primary email service
+  console.log('🔵 Trying NodeMailer (Gmail) as primary email service...');
+  const nodeMailerSuccess = await sendEmailWithNodeMailer(to, subject, html, text);
+  
+  if (nodeMailerSuccess) {
+    console.log('✅ Email sent successfully via NodeMailer (Gmail)\n');
+    return true;
   }
   
-  console.error('Both email services failed to send email');
+  // If NodeMailer fails, try SendGrid as fallback
+  console.log('⚠️ NodeMailer failed, trying SendGrid as fallback...');
+  const sendGridSuccess = await sendEmailWithSendGrid(to, subject, html, text);
+  
+  if (sendGridSuccess) {
+    console.log('✅ Email sent successfully via SendGrid (fallback)\n');
+    return true;
+  }
+  
+  console.error('❌ Both email services failed to send email\n');
   return false;
 }
 
 async function sendOTPEmail(email, otp, name) {
   try {
+    console.log('📧 sendOTPEmail called with:', { email, otp, name });
+    
+    if (!email || !otp || !name) {
+      console.error('❌ Missing required parameters for sendOTPEmail:', { email: !!email, otp: !!otp, name: !!name });
+      return false;
+    }
+
     const subject = 'Your Civic+ Email Verification Code';
     const html = `<!DOCTYPE html>
 <html>
@@ -241,9 +251,13 @@ Civic+ Team
 Erumeli Panchayath
     `;
     
-    return await sendEmailWithFallback(email, subject, html, textVersion);
+    console.log('📧 Calling sendEmailWithFallback...');
+    const result = await sendEmailWithFallback(email, subject, html, textVersion);
+    console.log('📧 sendEmailWithFallback result:', result);
+    return result;
   } catch (error) {
-    console.error('Error in sendOTPEmail:', error);
+    console.error('❌ Error in sendOTPEmail:', error);
+    console.error('Error stack:', error.stack);
     return false;
   }
 }

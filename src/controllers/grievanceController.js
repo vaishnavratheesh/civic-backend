@@ -435,7 +435,7 @@ const getMyGrievances = async (req, res) => {
       .lean();
 
     const mappedGrievances = grievances.map(grievance => ({
-      id: grievance._id,
+      id: grievance._id.toString(),
       userId: grievance.userId,
       userName: grievance.userName,
       ward: grievance.ward,
@@ -475,7 +475,7 @@ const getCommunityGrievances = async (req, res) => {
       .lean();
 
     const mappedGrievances = grievances.map(grievance => ({
-      id: grievance._id,
+      id: grievance._id.toString(),
       userId: grievance.userId,
       userName: grievance.userName,
       ward: grievance.ward,
@@ -534,7 +534,7 @@ const getAllGrievances = async (req, res) => {
     const total = await Grievance.countDocuments(filter);
 
     const mappedGrievances = grievances.map(grievance => ({
-      id: grievance._id,
+      id: grievance._id.toString(),
       userId: grievance.userId,
       userName: grievance.userName,
       ward: grievance.ward,
@@ -583,7 +583,7 @@ const getGrievanceById = async (req, res) => {
 
     res.json({
       grievance: {
-        id: grievance._id,
+        id: grievance._id.toString(),
         userId: grievance.userId?._id || grievance.userId,
         userName: grievance.userName,
         ward: grievance.ward,

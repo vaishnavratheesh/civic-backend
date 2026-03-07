@@ -36,6 +36,10 @@ router.put('/grievances/:id/verify/auto', auth, grievanceController.autoVerifyGr
 // Assign grievance to worker/officer
 router.put('/grievances/:id/assign', auth, grievanceController.assignGrievance);
 
+// Assign task to worker (new worker-based assignment)
+const workerController = require('../controllers/workerController');
+router.post('/grievances/:complaintId/assign', auth, workerController.assignTask);
+
 // Get grievance statistics (admin/officer)
 router.get('/grievances/stats', auth, grievanceController.getGrievanceStats);
 

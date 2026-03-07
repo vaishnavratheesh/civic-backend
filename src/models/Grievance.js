@@ -120,9 +120,58 @@ const grievanceSchema = new mongoose.Schema({
     default: 'pending'
   },
   assignedTo: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null
+    workerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Worker',
+      default: null
+    },
+    workerName: {
+      type: String,
+      default: null
+    },
+    workerType: {
+      type: String,
+      default: null
+    },
+    workerContact: {
+      type: String,
+      default: null
+    },
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    assignedByName: {
+      type: String,
+      default: null
+    },
+    assignedAt: {
+      type: Date,
+      default: null
+    },
+    acceptedAt: {
+      type: Date,
+      default: null
+    },
+    completedAt: {
+      type: Date,
+      default: null
+    },
+    assignmentNotes: {
+      type: String,
+      default: null
+    },
+    progressPhotos: [{
+      url: String,
+      type: String, // 'before', 'after', 'progress'
+      uploadedAt: Date
+    }],
+    completionPhotos: [{
+      url: String,
+      type: String,
+      uploadedAt: Date
+    }]
   },
   officerName: {
     type: String,

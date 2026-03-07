@@ -26,7 +26,12 @@ const auth = (req, res, next) => {
     console.log('Auth middleware - Token decoded successfully:', decoded);
     
     // Add user info to request
-    req.user = { id: decoded.userId, role: decoded.role };
+    req.user = { 
+      id: decoded.userId, 
+      role: decoded.role,
+      ward: decoded.ward,
+      workerType: decoded.workerType
+    };
     console.log('Auth middleware - req.user set:', req.user);
     
     next();

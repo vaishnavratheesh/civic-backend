@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
+const adminWorkerController = require('../controllers/adminWorkerController');
 const auth = require('../middleware/auth');
 
 // Middleware to check if user is admin
@@ -28,5 +29,13 @@ router.put('/admin/councillors/:id', auth, adminAuth, adminController.updateCoun
 
 // Ward-specific routes
 router.get('/admin/wards/:ward/users', auth, adminAuth, adminController.getUsersByWard);
+
+// Worker management routes
+router.get('/admin/workers/pending', auth, adminAuth, adminWorkerController.getPendingWorkers);
+router.get('/admin/workers/statistics', auth, adminAuth, adminWorkerController.getWorkerStatistics);
+router.get('/admin/workers', auth, adminAuth, adminWorkerController.getAllWorkers);
+router.get('/admin/workers/:workerId', auth, adminAuth, adminWorkerController.getWorkerDetails);
+router.post('/admin/workers/:workerId/approve', auth, adminAuth, adminWorkerController.approveWorker);
+router.post('/admin/workers/:workerId/reject', auth, adminAuth, adminWorkerController.rejectWorker);
 
 module.exports = router; 

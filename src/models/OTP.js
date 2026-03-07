@@ -7,8 +7,17 @@ const otpSchema = new mongoose.Schema({
     name: String,
     email: String,
     password: String,
-    ward: Number,
-    panchayath: String
+    ward: { type: mongoose.Schema.Types.Mixed }, // Can be Number for citizens or String for workers
+    panchayath: String, // For citizens
+    // Worker-specific fields
+    type: { type: String }, // Explicitly define type to avoid Mongoose confusion
+    contact: String,
+    specialization: String,
+    experience: Number,
+    registrationSource: String,
+    emailVerified: Boolean,
+    adminApproved: Boolean,
+    approvalStatus: String
   },
   createdAt: { type: Date, default: Date.now, expires: 600 } // Expires in 10 minutes
 });

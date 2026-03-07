@@ -22,6 +22,8 @@ const presidentRoutes = require('./routes/presidentRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
 const chatbotRoutes = require('./routes/chatbotRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const workerRoutes = require('./routes/workerRoutes');
+const workerAuthRoutes = require('./routes/workerAuthRoutes');
 
 const app = express();
 
@@ -57,6 +59,7 @@ require('./models/Announcement');
 require('./models/Event');
 require('./models/Message');
 require('./models/PastMember');
+require('./models/Worker');
 
 // MongoDB
 mongoose.connect(config.mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -97,6 +100,8 @@ app.use('/api', presidentRoutes);
 app.use('/api', meetingRoutes);
 app.use('/api', chatbotRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/workers', workerRoutes);
+app.use('/api/worker', workerAuthRoutes);
 
 // Test endpoint
 app.get('/api/test', (req, res) => {
