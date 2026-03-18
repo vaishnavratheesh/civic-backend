@@ -365,10 +365,10 @@ exports.assignTask = async (req, res) => {
         // Send notification email to worker if email exists
         if (worker.email) {
             try {
-                await sendEmail({
-                    to: worker.email,
-                    subject: 'New Task Assignment',
-                    html: `
+                await sendEmail(
+                    worker.email,
+                    'New Task Assignment',
+                    `
                         <h2>New Task Assigned</h2>
                         <p>Dear ${worker.name},</p>
                         <p>A new task has been assigned to you:</p>
@@ -382,7 +382,7 @@ exports.assignTask = async (req, res) => {
                         <p>Please check the worker dashboard for more details.</p>
                         <p>Best regards,<br>Civic+ Team</p>
                     `
-                });
+                );
             } catch (emailError) {
                 console.error('Failed to send email notification:', emailError);
                 // Don't fail the assignment if email fails

@@ -471,7 +471,6 @@ const getCommunityGrievances = async (req, res) => {
     // Get all grievances across all wards in the panchayath
     const grievances = await Grievance.find({})
       .sort({ credibilityScore: -1, createdAt: -1 })
-      .populate('assignedTo', 'name email')
       .lean();
 
     const mappedGrievances = grievances.map(grievance => ({
@@ -493,8 +492,8 @@ const getCommunityGrievances = async (req, res) => {
       credibilityScore: grievance.credibilityScore,
       flags: grievance.flags || [],
       audit: grievance.audit || {},
-      assignedTo: grievance.assignedTo?._id || null,
-      officerName: grievance.assignedTo?.name || grievance.officerName || null,
+      assignedTo: grievance.assignedTo || null,
+      officerName: grievance.assignedTo?.workerName || grievance.officerName || null,
       source: grievance.source,
       createdAt: grievance.createdAt,
       resolvedAt: grievance.resolvedAt,
@@ -525,7 +524,6 @@ const getAllGrievances = async (req, res) => {
 
     const grievances = await Grievance.find(filter)
       .sort({ credibilityScore: -1, createdAt: -1 })
-      .populate('assignedTo', 'name email')
       .populate('userId', 'name email')
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
@@ -552,8 +550,8 @@ const getAllGrievances = async (req, res) => {
       credibilityScore: grievance.credibilityScore,
       flags: grievance.flags || [],
       audit: grievance.audit || {},
-      assignedTo: grievance.assignedTo?._id || null,
-      officerName: grievance.assignedTo?.name || grievance.officerName || null,
+      assignedTo: grievance.assignedTo || null,
+      officerName: grievance.assignedTo?.workerName || grievance.officerName || null,
       source: grievance.source,
       createdAt: grievance.createdAt,
       resolvedAt: grievance.resolvedAt
@@ -576,7 +574,6 @@ const getGrievanceById = async (req, res) => {
   try {
     const { id } = req.params;
     const grievance = await Grievance.findById(id)
-      .populate('assignedTo', 'name email')
       .populate('userId', 'name email ward')
       .lean();
     if (!grievance) return res.status(404).json({ message: 'Grievance not found' });
@@ -598,8 +595,8 @@ const getGrievanceById = async (req, res) => {
         aiClassification: grievance.aiClassification || '',
         priorityScore: grievance.priorityScore,
         status: grievance.status,
-        assignedTo: grievance.assignedTo?._id || null,
-        officerName: grievance.assignedTo?.name || grievance.officerName || null,
+        assignedTo: grievance.assignedTo || null,
+        officerName: grievance.assignedTo?.workerName || grievance.officerName || null,
         actionHistory: grievance.actionHistory || [],
         createdAt: grievance.createdAt,
         updatedAt: grievance.updatedAt,
@@ -748,6 +745,47 @@ const updateGrievanceStatus = async (req, res) => {
   }
 };
 
+// Approve payment for a completed task (Councillor)
+const approvePayment = async (req, res) => {
+  try {
+    if (!req.user || !['ADMIN', 'COUNCILLOR', 'admin', 'councillor'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Forbidden: insufficient role' });
+    }
+    const { id } = req.params;
+    
+    const grievance = await Grievance.findById(id);
+    if (!grievance) {
+      return res.status(404).json({ message: 'Grievance not found' });
+    }
+    
+    if (!grievance.assignedTo || !grievance.assignedTo.paymentRequested) {
+      return res.status(400).json({ message: 'No payment was requested for this task' });
+    }
+    
+    grievance.assignedTo.paymentStatus = 'completed';
+    grievance.assignedTo.paymentNotes = `Approved by Councillor ${req.user.name || ''} on ${new Date().toLocaleString()}`;
+    
+    // Push action history
+    const actionRecord = {
+      action: 'payment_approved',
+      by: req.user.id,
+      at: new Date(),
+      remarks: `Processed payment of Rs ${grievance.assignedTo.paymentRequested}`
+    };
+    
+    const updatedGrievance = await Grievance.findByIdAndUpdate(
+      id,
+      { assignedTo: grievance.assignedTo, $push: { actionHistory: actionRecord } },
+      { new: true }
+    ).populate('assignedTo.workerId', 'name email');
+    
+    res.json({ message: 'Payment approved successfully', grievance: updatedGrievance });
+  } catch (error) {
+    console.error('Error approving payment:', error);
+    res.status(500).json({ message: 'Error approving payment', error: error.message });
+  }
+};
+
 // Get grievance statistics
 const getGrievanceStats = async (req, res) => {
   try {
@@ -846,7 +884,6 @@ const getGrievancesForReview = async (req, res) => {
     const councillorWard = req.user.ward;
     const grievances = await Grievance.find({ ward: councillorWard })
       .sort({ credibilityScore: -1, createdAt: -1 })
-      .populate('assignedTo', 'name email')
       .populate('userId', 'name email')
       .lean();
 
@@ -867,11 +904,15 @@ const getGrievancesForReview = async (req, res) => {
       credibilityScore: grievance.credibilityScore,
       flags: grievance.flags || [],
       audit: grievance.audit || {},
-      assignedTo: grievance.assignedTo?._id || null,
-      officerName: grievance.assignedTo?.name || grievance.officerName || null,
+      duplicateGroupId: grievance.duplicateGroupId || grievance._id?.toString?.(),
+      duplicateCount: Math.max(grievance.duplicateCount || 1, Array.isArray(grievance.upvoters) ? 1 + grievance.upvoters.length : 1),
+      assignedTo: grievance.assignedTo || null,
+      officerName: grievance.assignedTo?.workerName || grievance.officerName || null,
       source: grievance.source,
+      resolutionNotes: grievance.resolutionNotes || null,
       createdAt: grievance.createdAt,
-      resolvedAt: grievance.resolvedAt
+      resolvedAt: grievance.resolvedAt,
+      videoProofRequests: grievance.videoProofRequests || []
     }));
 
     res.json({ grievances: mappedGrievances });
@@ -1299,7 +1340,8 @@ module.exports = {
   uploadVideoProof,
   getMyVideoProofRequests,
   testVideoProofRequests,
-  fixComplaintClassifications
+  fixComplaintClassifications,
+  approvePayment
 };
 
 

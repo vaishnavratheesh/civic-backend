@@ -66,6 +66,11 @@ const workerSchema = new mongoose.Schema({
             'general_worker'
         ]
     },
+    employmentType: {
+        type: String,
+        enum: ['government', 'private'],
+        default: 'private'
+    },
     contact: {
         type: String,
         required: true,

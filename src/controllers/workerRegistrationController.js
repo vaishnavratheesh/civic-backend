@@ -176,7 +176,8 @@ async function verifyWorkerOTP(req, res) {
         console.error('Error stack:', err.stack);
 
         if (err.code === 11000) {
-            return res.status(400).json({ error: 'Email already registered' });
+            const duplicateKey = Object.keys(err.keyPattern || {})[0] || 'Email';
+            return res.status(400).json({ error: `${duplicateKey} already registered` });
         }
 
         res.status(500).json({
@@ -299,6 +300,7 @@ async function loginWorker(req, res) {
             email: worker.email,
             workerId: worker.workerId,
             type: worker.type,
+            employmentType: worker.employmentType || 'private',
             contact: worker.contact,
             ward: worker.ward,
             specialization: worker.specialization,

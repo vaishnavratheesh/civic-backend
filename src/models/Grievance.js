@@ -116,7 +116,7 @@ const grievanceSchema = new mongoose.Schema({
   upvoters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'resolved', 'rejected', 'assigned', 'Pending', 'InProgress', 'Resolved', 'Rejected', 'Assigned'],
+    enum: ['pending', 'in_progress', 'resolved', 'rejected', 'assigned', 'Pending', 'InProgress', 'In Progress', 'Resolved', 'Rejected', 'Assigned', 'Under Review'],
     default: 'pending'
   },
   assignedTo: {
@@ -164,14 +164,27 @@ const grievanceSchema = new mongoose.Schema({
     },
     progressPhotos: [{
       url: String,
-      type: String, // 'before', 'after', 'progress'
+      type: { type: String }, // 'before', 'after', 'progress'
       uploadedAt: Date
     }],
     completionPhotos: [{
       url: String,
-      type: String,
+      type: { type: String },
       uploadedAt: Date
-    }]
+    }],
+    paymentRequested: {
+      type: Number,
+      default: null
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['not_applicable', 'pending', 'paid'],
+      default: 'not_applicable'
+    },
+    paymentNotes: {
+      type: String,
+      default: null
+    }
   },
   officerName: {
     type: String,
@@ -199,8 +212,8 @@ const grievanceSchema = new mongoose.Schema({
   },
   // Video proof requests
   videoProofRequests: [{
-    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    requestedByName: { type: String, required: true },
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
+    requestedByName: { type: String, required: false },
     requestedAt: { type: Date, default: Date.now },
     message: { type: String, default: 'Please provide additional video evidence for this complaint.' },
     status: { 

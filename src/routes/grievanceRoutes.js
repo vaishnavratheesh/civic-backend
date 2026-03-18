@@ -40,6 +40,9 @@ router.put('/grievances/:id/assign', auth, grievanceController.assignGrievance);
 const workerController = require('../controllers/workerController');
 router.post('/grievances/:complaintId/assign', auth, workerController.assignTask);
 
+// Approve payment for a completed task (Councillor)
+router.post('/grievances/:id/approve-payment', auth, grievanceController.approvePayment);
+
 // Get grievance statistics (admin/officer)
 router.get('/grievances/stats', auth, grievanceController.getGrievanceStats);
 

@@ -72,7 +72,13 @@ const welfareApplicationSchema = new mongoose.Schema({
   
   // Scoring and evaluation
   score: { type: Number, required: false }, // AI-generated score
-  justification: { type: String, required: false }, // AI-generated justification
+  justification: { type: String, required: false }, // AI-generated justification summary
+  detailedAnalysis: [{
+    factor: { type: String, required: true },
+    impact: { type: Number, required: true },
+    type: { type: String, enum: ['positive', 'negative', 'neutral'], required: true },
+    description: { type: String, required: true }
+  }],
   
   // Status and workflow
   status: { 

@@ -275,11 +275,11 @@ exports.updateTaskStatus = async (req, res) => {
     }
 };
 
-// Complete task with before/after photos
+// Complete task with before/after photos and optional payment request
 exports.completeTask = async (req, res) => {
     try {
         const { taskId } = req.params;
-        const { remarks } = req.body;
+        const { remarks, paymentRequested } = req.body;
         const workerId = req.user.id;
 
         if (!mongoose.Types.ObjectId.isValid(taskId)) {
@@ -320,6 +320,18 @@ exports.completeTask = async (req, res) => {
         }
         task.assignedTo.completionPhotos.push(...completionPhotos);
         task.assignedTo.completedAt = new Date();
+
+        // Handle payment request if exists
+        if (paymentRequested !== undefined && !isNaN(Number(paymentRequested))) {
+            task.assignedTo.paymentRequested = Number(paymentRequested);
+            task.assignedTo.paymentStatus = 'pending';
+        } else {
+            // Check worker employmentType - if undefined we just don't set it to pending.
+            const worker = await Worker.findById(workerId);
+            if (worker && worker.employmentType === 'government') {
+                task.assignedTo.paymentStatus = 'not_applicable';
+            }
+        }
 
         // Add to action history
         task.actionHistory = task.actionHistory || [];
@@ -553,6 +565,100 @@ exports.getWardComplaints = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch ward complaints',
+            error: error.message
+        });
+    }
+};
+
+// Self assign task from pool
+exports.selfAssignTask = async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const workerId = req.user.id;
+
+        if (!mongoose.Types.ObjectId.isValid(taskId)) {
+            return res.status(400).json({ success: false, message: 'Invalid task ID format' });
+        }
+
+        const worker = await Worker.findById(workerId);
+        if (!worker || !worker.isActive) {
+            return res.status(400).json({ success: false, message: 'Worker not active' });
+        }
+
+        const task = await Grievance.findOne({
+            _id: taskId,
+            ward: Number(worker.ward),
+            status: { $in: ['Pending', 'pending', 'Under Review'] }
+        });
+
+        if (!task) {
+            return res.status(404).json({
+                success: false,
+                message: 'Task not found or already assigned/resolved'
+            });
+        }
+
+        // Prevent taking over if someone else is already assigned
+        if (task.assignedTo && task.assignedTo.workerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Task is already assigned'
+            });
+        }
+
+        task.assignedTo = {
+            workerId: worker._id,
+            workerName: worker.name,
+            workerType: worker.type,
+            workerContact: worker.contact,
+            assignedBy: worker._id, // Self-assigned
+            assignedByName: worker.name,
+            assignedAt: new Date(),
+            acceptedAt: new Date(), // Implicitly accepted since self-assigned
+            assignmentNotes: 'Self-assigned by worker'
+        };
+
+        task.status = 'In Progress';
+
+        // Add to action history
+        task.actionHistory = task.actionHistory || [];
+        task.actionHistory.push({
+            action: 'Self-assigned by worker',
+            by: workerId,
+            at: new Date(),
+            remarks: `Claimed by ${worker.name}`
+        });
+
+        await task.save();
+
+        // Update worker stats
+        worker.assignedTasks = (worker.assignedTasks || 0) + 1;
+        if (worker.availability === 'available' && worker.assignedTasks >= 5) {
+            worker.availability = 'busy';
+        }
+        await worker.save();
+
+        // Emit status update
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`ward:${task.ward}`).emit('complaint:update', {
+                complaintId: task._id,
+                status: 'In Progress',
+                action: 'SelfAssigned',
+                workerName: worker.name
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Task self-assigned and started successfully',
+            task
+        });
+    } catch (error) {
+        console.error('Self-assign task error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to self-assign task',
             error: error.message
         });
     }

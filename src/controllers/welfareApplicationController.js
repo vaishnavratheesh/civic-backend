@@ -9,39 +9,59 @@ const { verifyApplicationWithGemini } = require('../services/geminiVerify');
 // Apply for welfare scheme
 async function applyForScheme(req, res) {
   try {
+    console.log('[applyForScheme] Starting...');
+    console.log('[applyForScheme] Request user:', req.user);
+    console.log('[applyForScheme] Scheme ID:', req.params.schemeId);
+    console.log('[applyForScheme] Body keys:', Object.keys(req.body));
+    console.log('[applyForScheme] File count:', req.files?.length || 0);
+    
     const { schemeId } = req.params;
     const { id: userId } = req.user;
     let { personalDetails } = req.body;
 
+    console.log('[applyForScheme] Raw personalDetails type:', typeof personalDetails);
+    console.log('[applyForScheme] Raw personalDetails:', personalDetails);
+
     // Parse JSON strings when sent via multipart/form-data
     if (typeof personalDetails === 'string') {
-      try { personalDetails = JSON.parse(personalDetails); } catch (_) {}
+      try { 
+        personalDetails = JSON.parse(personalDetails);
+        console.log('[applyForScheme] Parsed personalDetails:', personalDetails);
+      } catch (_) {
+        console.error('[applyForScheme] Failed to parse personalDetails');
+      }
     }
 
     // Check if scheme exists and is active
     const scheme = await WelfareScheme.findById(schemeId);
     if (!scheme) {
+      console.error('[applyForScheme] Scheme not found:', schemeId);
       return res.status(404).json({ 
         success: false, 
         message: 'Welfare scheme not found' 
       });
     }
 
+    console.log('[applyForScheme] Scheme found:', scheme._id, scheme.title);
+
     if (scheme.status !== 'active') {
+      console.error('[applyForScheme] Scheme not active:', scheme.status);
       return res.status(400).json({ 
         success: false, 
         message: 'This scheme is not currently accepting applications' 
       });
     }
 
-    if (scheme.applicationDeadline < new Date()) {
+    if (scheme.endDate < new Date()) {
+      console.error('[applyForScheme] Deadline passed:', scheme.endDate);
       return res.status(400).json({ 
         success: false, 
-        message: 'Application deadline has passed' 
+        message: 'Application deadline has passed for this scheme' 
       });
     }
 
     if (scheme.availableSlots <= 0) {
+      console.error('[applyForScheme] No slots available');
       return res.status(400).json({ 
         success: false, 
         message: 'No slots available for this scheme' 
@@ -55,6 +75,7 @@ async function applyForScheme(req, res) {
     });
 
     if (existingApplication) {
+      console.error('[applyForScheme] User already applied');
       return res.status(400).json({ 
         success: false, 
         message: 'You have already applied for this scheme' 
@@ -64,11 +85,14 @@ async function applyForScheme(req, res) {
     // Get user details
     const user = await User.findById(userId);
     if (!user) {
+      console.error('[applyForScheme] User not found:', userId);
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
       });
     }
+
+    console.log('[applyForScheme] User found:', user.name);
 
     // Age validation
     if (user.dateOfBirth) {
@@ -77,6 +101,7 @@ async function applyForScheme(req, res) {
       const age = Math.floor((today - birthDate) / (365.25 * 24 * 60 * 60 * 1000));
       
       if (age < scheme.minAge || age > scheme.maxAge) {
+        console.error('[applyForScheme] Age not in range:', age);
         return res.status(400).json({ 
           success: false, 
           message: `Age requirement not met. This scheme is for ages ${scheme.minAge} to ${scheme.maxAge}. Your age: ${age}` 
@@ -98,6 +123,7 @@ async function applyForScheme(req, res) {
         const fieldName = `doc_${reqDoc.name.replace(/\s+/g, '_').toLowerCase()}`;
         const fileArr = filesByField[fieldName];
         if (!fileArr || fileArr.length === 0) {
+          console.error('[applyForScheme] Missing required document:', fieldName);
           return res.status(400).json({ success: false, message: `Missing required document: ${reqDoc.name}` });
         }
         const file = fileArr[0];
@@ -106,6 +132,7 @@ async function applyForScheme(req, res) {
           const ext = (file.originalname.split('.').pop() || '').toLowerCase();
           const allowed = reqDoc.formats.map(x => String(x).toLowerCase());
           if (!allowed.includes(ext)) {
+            console.error('[applyForScheme] Invalid file format:', ext);
             return res.status(400).json({ success: false, message: `${reqDoc.name} must be one of: ${reqDoc.formats.join(', ')}` });
           }
         }
@@ -113,6 +140,11 @@ async function applyForScheme(req, res) {
         uploadedDocuments.push({ name: reqDoc.name, url: fileUrl });
       }
     }
+
+    console.log('[applyForScheme] Creating application with data:', {
+      personalDetails,
+      documentsCount: uploadedDocuments.length
+    });
 
     // Create application with new simplified structure
     const application = new WelfareApplication({
@@ -155,23 +187,32 @@ async function applyForScheme(req, res) {
       documents: uploadedDocuments
     });
 
-    await application.save();
+    console.log('[applyForScheme] Application object created:', {
+      id: application._id,
+      personalDetails: application.personalDetails
+    });
+
+    const savedApplication = await application.save();
+    console.log('[applyForScheme] Application saved successfully:', savedApplication._id);
 
     // Update available slots
     scheme.availableSlots -= 1;
     await scheme.save();
+    console.log('[applyForScheme] Scheme slots updated');
 
+    console.log('[applyForScheme] Sending success response');
     res.status(201).json({
       success: true,
       message: 'Application submitted successfully',
-      application
+      application: savedApplication
     });
 
   } catch (error) {
-    console.error('Error applying for scheme:', error);
+    console.error('[applyForScheme] Error:', error?.message || error);
+    if (error?.stack) console.error(error.stack);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to submit application' 
+      message: error.message || 'Failed to submit application' 
     });
   }
 }
@@ -286,6 +327,7 @@ async function getApplications(req, res) {
       documents: Array.isArray(d.documents) ? d.documents : [],
       score: typeof d.score === 'number' ? d.score : undefined,
       justification: d.justification || '',
+      detailedAnalysis: d.detailedAnalysis || [],
       status: d.status || 'pending',
       verificationStatus: d.verificationStatus || 'Pending',
       appliedAt: d.appliedAt || d.createdAt || new Date(0),
@@ -396,8 +438,11 @@ async function getUserApplications(req, res) {
       justification: d.justification || '',
       status: d.status || 'pending',
       verificationStatus: d.verificationStatus || 'Pending',
-      appliedAt: d.appliedAt || d.createdAt || new Date(0),
+      reviewComments: d.reviewComments || '',
       reviewedAt: d.reviewedAt || null,
+      reviewedByName: d.reviewedByName || '',
+      detailedAnalysis: Array.isArray(d.detailedAnalysis) ? d.detailedAnalysis : [],
+      appliedAt: d.appliedAt || d.createdAt || new Date(0),
     }));
 
     console.log('getUserApplications - returning applications:', applications.length);
@@ -731,10 +776,10 @@ async function scoreApplication(req, res) {
     };
 
     // Call real ML service
-    const mlBase = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+    const mlBase = process.env.ML_SERVICE_URL || 'http://localhost:8000';
     
     try {
-      const mlResponse = await fetch(`${mlBase}/score`, {
+      const mlResponse = await fetch(`${mlBase}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -752,6 +797,16 @@ async function scoreApplication(req, res) {
       // Save score to application
       application.score = Math.round(mlResult.score);
       application.justification = mlResult.justification || `ML prediction ${Math.round(mlResult.score)} (${mlResult.priority} Priority)`;
+
+      // Map SHAP explanation to detailedAnalysis format
+      const detailedAnalysis = Object.entries(mlResult.explanation || {}).map(([factor, impact]) => ({
+        factor: factor.charAt(0).toUpperCase() + factor.slice(1),
+        impact: Math.round(impact),
+        type: impact > 0 ? (factor === 'income' ? 'negative' : 'positive') : (factor === 'income' ? 'positive' : 'negative'),
+        description: `This factor ${impact > 0 ? 'increased' : 'decreased'} the score by ${Math.abs(Math.round(impact))} points due to its weight in the AI model.`
+      }));
+      application.detailedAnalysis = detailedAnalysis;
+
       await application.save();
 
       return res.json({ 
@@ -788,6 +843,115 @@ async function scoreApplication(req, res) {
   }
 }
 
+// Bulk score all applications for a specific scheme
+async function scoreSchemeApplications(req, res) {
+  try {
+    const { schemeId } = req.params;
+    const { role, id: userId } = req.user;
+
+    // Verify scheme exists
+    const scheme = await WelfareScheme.findById(schemeId);
+    if (!scheme) {
+      return res.status(404).json({ success: false, message: 'Scheme not found' });
+    }
+
+    // Check permissions
+    if (role === 'councillor') {
+      const reviewer = await CouncillorProfile.findById(userId);
+      if (!reviewer || (scheme.scope === 'ward' && scheme.ward !== reviewer.ward)) {
+        return res.status(403).json({ success: false, message: 'Not allowed to score applications for this scheme' });
+      }
+    } else if (role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admin or councillor can score applications' });
+    }
+
+    // Find all pending applications for this scheme (even if previously scored, so we can re-evaluate)
+    const applications = await WelfareApplication.find({
+      schemeId,
+      status: 'pending'
+    });
+
+    if (applications.length === 0) {
+      return res.json({ success: true, message: 'No pending applications found for this scheme.', count: 0 });
+    }
+
+    // Call real ML service for batch scoring
+    const mlBase = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+    
+    try {
+      const payload = {
+        applications: applications.map(app => app.toObject())
+      };
+
+      console.log(`[Batch Scoring] Sending ${payload.applications.length} applications to ${mlBase}/predict-batch`);
+
+      const mlResponse = await fetch(`${mlBase}/predict-batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        timeout: 30000 // Increase timeout for batch
+      });
+
+      if (!mlResponse.ok) {
+        let errorText = await mlResponse.text().catch(() => 'no text');
+        console.error(`ML service error: ${mlResponse.status} - ${errorText}`);
+        throw new Error(`ML service error: ${mlResponse.status}`);
+      }
+
+      const mlResult = await mlResponse.json();
+      
+      if (!mlResult.success || !mlResult.results) {
+         throw new Error(`ML service returned failure for batch`);
+      }
+
+      // Update each application in database
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const result of mlResult.results) {
+        if (result.error) {
+          console.error(`Error scoring app ${result.applicationId}: ${result.error}`);
+          errorCount++;
+          continue;
+        }
+
+        // Map SHAP explanation to detailedAnalysis format
+        const detailedAnalysis = Object.entries(result.explanation || {}).map(([factor, impact]) => ({
+          factor: factor.charAt(0).toUpperCase() + factor.slice(1),
+          impact: Math.round(impact),
+          type: impact > 0 ? (factor === 'income' ? 'negative' : 'positive') : (factor === 'income' ? 'positive' : 'negative'),
+          description: `This factor ${impact > 0 ? 'increased' : 'decreased'} the score by ${Math.abs(Math.round(impact))} points due to its weight in the AI model.`
+        }));
+
+        await WelfareApplication.findByIdAndUpdate(result.applicationId, {
+          $set: {
+            score: Math.round(result.score),
+            justification: result.justification || `ML prediction ${Math.round(result.score)} (${result.priority} Priority)`,
+            detailedAnalysis: detailedAnalysis
+          }
+        });
+        successCount++;
+      }
+
+      return res.json({ 
+        success: true, 
+        message: `Successfully scored ${successCount} applications.`,
+        count: successCount,
+        errors: errorCount
+      });
+      
+    } catch (mlError) {
+      console.error('ML service batch error:', mlError);
+      return res.status(500).json({ success: false, message: 'Failed to communicate with ML scoring service for batch processing.' });
+    }
+  } catch (error) {
+    console.error('Error bulk scoring applications:', error.message || error);
+    return res.status(500).json({ success: false, message: 'Failed to bulk score applications' });
+  }
+}
+
 module.exports = {
   applyForScheme,
   getApplications,
@@ -796,6 +960,7 @@ module.exports = {
   reviewApplication,
   getApplicationStats,
   scoreApplication,
+  scoreSchemeApplications,
   manualVerifyApplication,
   autoVerifyApplication
 };

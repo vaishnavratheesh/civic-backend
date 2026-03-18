@@ -30,6 +30,7 @@ router.get('/ward-complaints', workerTaskController.getWardComplaints);
 router.get('/tasks/stats', workerTaskController.getWorkerStats);
 router.get('/tasks/:taskId', workerTaskController.getTaskById);
 router.post('/tasks/:taskId/accept', workerTaskController.acceptTask);
+router.post('/tasks/:taskId/self-assign', workerTaskController.selfAssignTask);
 router.post('/tasks/:taskId/reject', workerTaskController.rejectTask);
 router.put('/tasks/:taskId/status', workerTaskController.updateTaskStatus);
 router.post('/tasks/:taskId/complete', upload.array('photos', 5), workerTaskController.completeTask);
